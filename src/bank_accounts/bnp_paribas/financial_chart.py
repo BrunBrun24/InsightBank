@@ -385,247 +385,276 @@ class FinancialChart:
         graph_id = "switch_" + str(uuid.uuid4()).replace("-", "_")
 
         return f"""
-        <style>
-        .switch_{graph_id} {{
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 26px;
-            margin: 0 10px;
-        }}
-        .switch_{graph_id} input {{ opacity: 0; width: 0; height: 0; }}
-        .slider_{graph_id} {{
-            position: absolute;
-            cursor: pointer;
-            top:0; left:0; right:0; bottom:0;
-            background:#2CAFFE;
-            border-radius:34px;
-            transition:.4s;
-        }}
-        .slider_{graph_id}:before {{
-            position:absolute;
-            content:"";
-            height:18px; width:18px;
-            left:4px; bottom:4px;
-            background:white;
-            border-radius:50%;
-            transition:.4s;
-        }}
-        input:checked + .slider_{graph_id} {{
-            background:#544FC5;
-        }}
-        input:checked + .slider_{graph_id}:before {{
-            transform:translateX(24px);
-        }}
-        </style>
-
-        <div style="background:#f9f9f9;padding:15px;border-radius:8px;">
-
-            <span id="label_{graph_id}" style="font-weight:bold;color:#2CAFFE;">Dépenses</span>
-
-            <label class="switch_{graph_id}">
-                <input type="checkbox" id="switch_{graph_id}">
-                <span class="slider_{graph_id}"></span>
-            </label>
-
-            <span style="margin-left:20px;">
-                <label><input type="radio" name="mode_{graph_id}" value="year" checked> Par année</label>
-                <label><input type="radio" name="mode_{graph_id}" value="month"> Par mois</label>
-            </span>
-
-            <select id="year_{graph_id}" style="display:none;">
-                {"".join([f'<option value="{y}">{y}</option>' for y in years])}
-            </select>
-
-            <span style="margin-left:20px;">
-                <label><input type="radio" name="gran_{graph_id}" value="total" checked> Total</label>
-                <label><input type="radio" name="gran_{graph_id}" value="cat"> Catégories</label>
-                <label><input type="radio" name="gran_{graph_id}" value="sub"> Sous-catégories</label>
-            </span>
-
-            <div id="chart_{graph_id}" style="height:850px;"></div>
-        </div>
-
-        <script>
-        (function(){{
-            const DATA = {json.dumps(datasets)};
-            const years = {json.dumps(sorted(years))};
-            const months = {json.dumps(months_labels)};
-
-            let type = "Depenses";
-            let mode = "year";
-            let gran = "total";
-            let chart;
-
-            function round(v){{return Math.round((v+Number.EPSILON)*100)/100;}}
-
-            function getColor(){{
-                return type === "Revenus" ? "#544FC5" : "#2CAFFE";
+            <style>
+            .switch_{graph_id} {{
+                position: relative;
+                display: inline-block;
+                width: 50px;
+                height: 26px;
+                margin: 0 10px;
             }}
-
-            function getRandomColor(i){{
-                const colors = Highcharts.getOptions().colors;
-                let base = Highcharts.color(colors[i % colors.length]);
-                return base.brighten((Math.random() - 0.5) * 0.3).get();
+            .switch_{graph_id} input {{ opacity: 0; width: 0; height: 0; }}
+            .slider_{graph_id} {{
+                position: absolute;
+                cursor: pointer;
+                top:0; left:0; right:0; bottom:0;
+                background:#2CAFFE;
+                border-radius:34px;
+                transition:.4s;
             }}
+            .slider_{graph_id}:before {{
+                position:absolute;
+                content:"";
+                height:18px; width:18px;
+                left:4px; bottom:4px;
+                background:white;
+                border-radius:50%;
+                transition:.4s;
+            }}
+            input:checked + .slider_{graph_id} {{
+                background:#544FC5;
+            }}
+            input:checked + .slider_{graph_id}:before {{
+                transform:translateX(24px);
+            }}
+            </style>
 
-            function aggregate(selectedYear){{
-                let result;
-                if(mode==="year"){{
-                    result = years.map(y =>
-                        Object.values(DATA[type]).reduce((s,c)=>
-                            s + Object.values(c).reduce((s2,sub)=>
-                                s2 + (sub[y]?.reduce((a,b)=>a+b,0)||0)
-                            ,0)
-                        ,0)
-                    );
-                }} else {{
-                    result = Array.from({{length:12}},(_,i)=>
-                        Object.values(DATA[type]).reduce((s,c)=>
-                            s + Object.values(c).reduce((s2,sub)=>
-                                s2 + (sub[selectedYear]?.[i]||0)
-                            ,0)
-                        ,0)
-                    );
+            <div style="background:#f9f9f9;padding:15px;border-radius:8px;">
+
+                <span id="label_{graph_id}" style="font-weight:bold;color:#2CAFFE;">Dépenses</span>
+
+                <label class="switch_{graph_id}">
+                    <input type="checkbox" id="switch_{graph_id}">
+                    <span class="slider_{graph_id}"></span>
+                </label>
+
+                <span style="margin-left:20px;">
+                    <label><input type="radio" name="mode_{graph_id}" value="year" checked> Par année</label>
+                    <label><input type="radio" name="mode_{graph_id}" value="month"> Par mois</label>
+                </span>
+
+                <select id="year_{graph_id}" style="display:none;">
+                    {"".join([f'<option value="{y}">{y}</option>' for y in years])}
+                </select>
+
+                <span style="margin-left:20px;">
+                    <label><input type="radio" name="gran_{graph_id}" value="total" checked> Total</label>
+                    <label><input type="radio" name="gran_{graph_id}" value="cat"> Catégories</label>
+                    <label><input type="radio" name="gran_{graph_id}" value="sub"> Sous-catégories</label>
+                </span>
+
+                <div id="chart_{graph_id}" style="height:850px;"></div>
+            </div>
+
+            <script>
+            (function(){{
+                const DATA = {json.dumps(datasets)};
+                const years = {json.dumps(sorted(years))};
+                const months = {json.dumps(months_labels)};
+
+                let type = "Depenses";
+                let mode = "year";
+                let gran = "total";
+                let chart;
+
+                function round(v){{return Math.round((v+Number.EPSILON)*100)/100;}}
+
+                function getColor(){{
+                    return type === "Revenus" ? "#544FC5" : "#2CAFFE";
                 }}
-                return result.map(round);
-            }}
 
-            function pct(values){{
-                let res = [];
-                for(let i=0;i<values.length;i++){{
-                    if(i===0 || values[i-1]===0){{
-                        res.push(null);
+                function getRandomColor(i){{
+                    const colors = Highcharts.getOptions().colors;
+                    let base = Highcharts.color(colors[i % colors.length]);
+                    return base.brighten((Math.random() - 0.5) * 0.3).get();
+                }}
+
+                function aggregate(selectedYear){{
+                    let result;
+                    if(mode==="year"){{
+                        result = years.map(y =>
+                            Object.values(DATA[type]).reduce((s,c)=>
+                                s + Object.values(c).reduce((s2,sub)=>
+                                    s2 + (sub[y]?.reduce((a,b)=>a+b,0)||0)
+                                ,0)
+                            ,0)
+                        );
                     }} else {{
-                        let val = round((values[i]-values[i-1])/values[i-1]*100);
-                        res.push(val);
+                        result = Array.from({{length:12}},(_,i)=>
+                            Object.values(DATA[type]).reduce((s,c)=>
+                                s + Object.values(c).reduce((s2,sub)=>
+                                    s2 + (sub[selectedYear]?.[i]||0)
+                                ,0)
+                            ,0)
+                        );
                     }}
-                }}
-                return res;
-            }}
-
-            function buildSeries(){{
-                const y = parseInt(document.getElementById("year_{graph_id}").value)||years[years.length-1];
-                let series=[];
-                let totals;
-
-                if(gran==="total"){{
-                    totals = aggregate(y);
-                    series.push({{
-                        name:type,
-                        data:totals,
-                        type:"column",
-                        color:getColor()
-                    }});
+                    return result.map(round);
                 }}
 
-                if(gran==="cat"){{
-                    Object.entries(DATA[type]).forEach(([cat,subs])=>{{
-                        let data = mode==="year"
-                            ? years.map(y=>Object.values(subs).reduce((s,sub)=>s+(sub[y]?.reduce((a,b)=>a+b,0)||0),0))
-                            : Object.values(subs).reduce((arr,sub)=>arr.map((v,i)=>v+(sub[y]?.[i]||0)),Array(12).fill(0));
+                function pct(values){{
+                    let res = [];
+                    for(let i=0;i<values.length;i++){{
+                        if(i===0 || values[i-1]===0){{
+                            res.push(null);
+                        }} else {{
+                            let val = round((values[i]-values[i-1])/values[i-1]*100);
+                            res.push(val);
+                        }}
+                    }}
+                    return res;
+                }}
 
+                function buildSeries(){{
+                    const y = parseInt(document.getElementById("year_{graph_id}").value)||years[years.length-1];
+                    let series=[];
+                    let totals;
+
+                    if(gran==="total"){{
+                        totals = aggregate(y);
                         series.push({{
-                            name:cat,
-                            data:data.map(round),
+                            name:type,
+                            data:totals,
                             type:"column",
-                            stack:"t",
-                            color:getRandomColor(series.length)
+                            color:getColor()
                         }});
-                    }});
-                }}
+                    }}
 
-                if(gran==="sub"){{
-                    Object.entries(DATA[type]).forEach(([cat,subs])=>{{
-                        Object.entries(subs).forEach(([sub,dataObj])=>{{
+                    if(gran==="cat"){{
+                        Object.entries(DATA[type]).forEach(([cat,subs])=>{{
                             let data = mode==="year"
-                                ? years.map(y=>dataObj[y]?.reduce((a,b)=>a+b,0)||0)
-                                : dataObj[y]||Array(12).fill(0);
+                                ? years.map(y=>Object.values(subs).reduce((s,sub)=>s+(sub[y]?.reduce((a,b)=>a+b,0)||0),0))
+                                : Object.values(subs).reduce((arr,sub)=>arr.map((v,i)=>v+(sub[y]?.[i]||0)),Array(12).fill(0));
 
                             series.push({{
-                                name:sub,
+                                name:cat,
                                 data:data.map(round),
                                 type:"column",
                                 stack:"t",
                                 color:getRandomColor(series.length)
                             }});
                         }});
-                    }});
-                }}
+                    }}
 
-                totals = aggregate(y);
-                const avg = totals.reduce((a,b)=>a+b,0)/totals.length;
+                    if(gran==="sub"){{
+                        Object.entries(DATA[type]).forEach(([cat,subs])=>{{
+                            Object.entries(subs).forEach(([sub,dataObj])=>{{
+                                let data = mode==="year"
+                                    ? years.map(y=>dataObj[y]?.reduce((a,b)=>a+b,0)||0)
+                                    : dataObj[y]||Array(12).fill(0);
 
-                series.push({{
-                    name:"Moyenne",
-                    data:Array(totals.length).fill(round(avg)),
-                    type:"line",
-                    dashStyle:"Dot",
-                    color:"#ff4d4d",
-                    marker:{{enabled:false}},
-                    showInLegend:false
-                }});
+                                series.push({{
+                                    name:sub,
+                                    data:data.map(round),
+                                    type:"column",
+                                    stack:"t",
+                                    color:getRandomColor(series.length)
+                                }});
+                            }});
+                        }});
+                    }}
 
-                if(mode==="year"){{
+                    totals = aggregate(y);
+                    const avg = totals.reduce((a,b)=>a+b,0)/totals.length;
+
                     series.push({{
-                        name:"Variation %",
-                        data:pct(totals),
+                        name:"Moyenne",
+                        data:Array(totals.length).fill(round(avg)),
                         type:"line",
-                        yAxis:1,
-                        showInLegend:false,
-                        lineWidth:3,
-                        color:"#666",
-                        zones:[{{
-                            value:0,
-                            color:"#e74c3c"
-                        }}, {{
-                            color:"#2ecc71"
-                        }}]
+                        dashStyle:"Dot",
+                        color:"#FF0000",
+                        marker:{{enabled:false}},
+                        showInLegend:false
+                    }});
+
+                    if(mode==="year"){{
+                        series.push({{
+                            name:"Variation %",
+                            data:pct(totals),
+                            type:"line",
+                            yAxis:1,
+                            showInLegend:false,
+                            lineWidth:2,
+                            marker:{{enabled:true,symbol:'circle',radius:4}},
+                            zones:[{{
+                                value:0,
+                                color:"#FF0000"
+                            }}, {{
+                                color:"#00E272"
+                            }}]
+                        }});
+                    }}
+
+                    return series;
+                }}
+
+                function render(){{
+                    mode = document.querySelector('input[name="mode_{graph_id}"]:checked').value;
+                    gran = document.querySelector('input[name="gran_{graph_id}"]:checked').value;
+
+                    const categories = mode==="year"?years:months;
+
+                    chart = Highcharts.chart("chart_{graph_id}",{{
+                        chart:{{type:"column"}},
+                        title:{{text:"Evolution "+type}},
+                        xAxis:{{categories}},
+                        yAxis:[
+                            {{title:{{text:"€"}}}},
+                            {{title:{{text:"%"}},opposite:true}}
+                        ],
+                        tooltip: {{
+                            shared: false,
+                            useHTML: true,
+                            formatter: function () {{
+                                const header = this.key; 
+                                
+                                const name = this.series.name;
+                                const value = this.y;
+                                const color = this.point.color;
+                                let displayValue = value;
+                                let suffix = name === "Variation %" ? "%" : "€";
+
+                                let displayName = name === "Variation %" ? "Variation" : name;
+
+                                let valueStyle = "";
+                                if (name === "Variation %") {{
+                                    const statusColor = value >= 0 ? "#00E272" : "#FF0000";
+                                    const sign = value > 0 ? "+" : "";
+                                    displayValue = sign + value;
+                                    valueStyle = `style="color:${{statusColor}}"`;
+                                }}
+
+                                return `
+                                    <span style="font-size: 10px">${{header}}</span><br/>
+                                    <span style="color:${{color}}">\u25cf</span> ${{displayName}}: 
+                                    <b><span ${{valueStyle}}>${{displayValue}}${{suffix}}</span></b>
+                                `;
+                            }}
+                        }},
+                        plotOptions:{{
+                            column:{{stacking:gran==="total"?null:"normal"}}
+                        }},
+                        series:buildSeries()
                     }});
                 }}
 
-                return series;
-            }}
+                document.getElementById("switch_{graph_id}").onchange = e=>{{
+                    type = e.target.checked ? "Revenus":"Depenses";
+                    document.getElementById("label_{graph_id}").innerText = type==="Revenus"?"Revenus":"Dépenses";
+                    document.getElementById("label_{graph_id}").style.color = getColor();
+                    render();
+                }};
 
-            function render(){{
-                mode = document.querySelector('input[name="mode_{graph_id}"]:checked').value;
-                gran = document.querySelector('input[name="gran_{graph_id}"]:checked').value;
-
-                const categories = mode==="year"?years:months;
-
-                chart = Highcharts.chart("chart_{graph_id}",{{
-                    chart:{{type:"column"}},
-                    title:{{text:"Evolution "+type}},
-                    xAxis:{{categories}},
-                    yAxis:[
-                        {{title:{{text:"€"}}}},
-                        {{title:{{text:"%"}},opposite:true}}
-                    ],
-                    plotOptions:{{
-                        column:{{stacking:gran==="total"?null:"normal"}}
-                    }},
-                    series:buildSeries()
+                document.querySelectorAll('input[name="mode_{graph_id}"]').forEach(r=>r.onchange=e=>{{
+                    document.getElementById("year_{graph_id}").style.display = e.target.value==="month"?"inline":"none";
+                    render();
                 }});
-            }}
 
-            document.getElementById("switch_{graph_id}").onchange = e=>{{
-                type = e.target.checked ? "Revenus":"Depenses";
-                document.getElementById("label_{graph_id}").innerText = type==="Revenus"?"Revenus":"Dépenses";
-                document.getElementById("label_{graph_id}").style.color = getColor();
+                document.querySelectorAll('input[name="gran_{graph_id}"]').forEach(r=>r.onchange=render);
+                document.getElementById("year_{graph_id}").onchange=render;
+
                 render();
-            }};
-
-            document.querySelectorAll('input[name="mode_{graph_id}"]').forEach(r=>r.onchange=e=>{{
-                document.getElementById("year_{graph_id}").style.display = e.target.value==="month"?"inline":"none";
-                render();
-            }});
-
-            document.querySelectorAll('input[name="gran_{graph_id}"]').forEach(r=>r.onchange=render);
-            document.getElementById("year_{graph_id}").onchange=render;
-
-            render();
-        }})();
-        </script>
+            }})();
+            </script>
         """
 
     def __create_combined_charts(self, fig1: go.Figure, fig2: go.Figure, save: bool = True) -> go.Figure:
@@ -836,10 +865,34 @@ class FinancialChart:
                             tooltip: {{
                                 shared: false, useHTML: true,
                                 formatter: function() {{
-                                    let col = (this.series.options.stack === 'depenses') ? '#FF0000' : '#00E272';
-                                    if (this.series.name === 'Épargne nette') col = this.y >= 0 ? '#00E272' : '#FF0000';
-                                    return `<span style="color:${{col}}">\\u25cf</span> <b>${{this.series.name}}</b><br/>` +
-                                           `Montant: <b style="color:${{col}}">${{this.y.toFixed(2)}} €</b>`;
+                                    let color_amount;
+                                    // On vérifie le stack défini dans la série
+                                    const stack = this.series.userOptions.stack;
+                                    const name = this.series.name;
+
+                                    if (stack === 'depenses') {{
+                                        color_amount = '#FF0000';
+                                    }} else if (stack === 'revenus') {{
+                                        color_amount = '#00E272';
+                                    }} else if (name === 'Épargne nette') {{
+                                        color_amount = this.y >= 0 ? '#00E272' : '#FF0000';
+                                    }}
+
+                                    let tooltipHtml = `<span style="color:${{color_amount}}">\u25cf</span> <b>${{this.series.name}}</b><br/>` +
+                                                    `Montant: <b style="color:${{color_amount}}">${{this.y}} €</b>`;
+                                    
+                                    if(this.series.name === 'Épargne nette' && viewMode === 'years') {{
+                                        const index = this.point.index;
+                                        if (index > 0) {{
+                                            const prevY = this.series.points[index - 1].y;
+                                            if (prevY && prevY !== 0) {{
+                                                const change = ((this.y - prevY) / Math.abs(prevY)) * 100;
+                                                const color_v = change >= 0 ? '#00E272' : '#FF0000';
+                                                tooltipHtml += `<br/>Variation: <b style="color:${{color_v}}">${{change > 0 ? '+' : ''}}${{change.toFixed(1)}}%</b>`;
+                                            }}
+                                        }}
+                                    }}
+                                    return tooltipHtml;
                                 }}
                             }},
                             plotOptions: {{ 
