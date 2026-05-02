@@ -15,12 +15,12 @@ class ExcelReport:
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
 
-    def display(self, account_row: pd.Series) -> None:
+    def display(self, bank_account_row: pd.Series) -> None:
         """Affiche les années disponibles sous forme de cartes pour accéder au bilan Excel"""
 
         self.__controller.destroy_widgets()
 
-        bilan_dir = os.path.join(self.__config["destination_path"], account_row["name"])
+        bilan_dir = os.path.join(self.__config["destination_path"], bank_account_row["name"])
 
         # Créer le dossier s'il n'existe pas
         if not os.path.exists(bilan_dir):
@@ -36,7 +36,7 @@ class ExcelReport:
             fg_color=self.__theme["magenta"]["fg_color"],
             hover_color=self.__theme["magenta"]["hover_color"],
             width=40,
-            command=lambda: self.__controller.show_account_menu(account_row),
+            command=lambda: self.__controller.show_account_menu(bank_account_row),
         )
         back_btn.place(x=0, y=15)
 

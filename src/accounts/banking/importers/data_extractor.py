@@ -15,7 +15,7 @@ class DataExtractor:
         self.__config = load_config()
         self.__initial_dir = self.__config["extract_file"]
 
-    def run_extraction(self, account_id: int) -> pd.DataFrame | None:
+    def run_extraction(self, bank_account_id: int) -> pd.DataFrame | None:
         """Lance la fenêtre pour l'extraction des données."""
 
         paths = filedialog.askopenfilenames(
@@ -44,7 +44,7 @@ class DataExtractor:
 
         if all_dfs:
             df = pd.concat(all_dfs, ignore_index=True)
-            df["account_id"] = account_id
+            df["bank_account_id"] = bank_account_id
 
             return df
 

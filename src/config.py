@@ -12,7 +12,7 @@ def load_config() -> dict:
             "extract_file": "",
             "destination_path": "exports",
             "database": {
-                "database_path": "data/account.db",
+                "database_path": "data/bank_accounts.db",
                 "incomes": {
                     "short_label_and_operation_type": {
                         "Remise Chèques": ["Remise Chèques"],

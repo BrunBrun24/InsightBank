@@ -19,7 +19,7 @@ class Categorizer:
     - Enregistrer les opérations catégorisées dans la base et les marquer comme traitées.
     """
 
-    def __init__(self, parent: ctk.CTk, db: BankingDB, account_id: int, buttons_per_row=5) -> None:
+    def __init__(self, parent: ctk.CTk, db: BankingDB, bank_account_id: int, buttons_per_row=5) -> None:
         """
         Initialise l'interface de catégorisation et charge les données nécessaires.
 
@@ -33,10 +33,10 @@ class Categorizer:
         self.has_changed = False
 
         self.__db = db
-        self.__account_id = account_id
+        self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
         self.__theme = config["theme"]
-        self.__operations = self.__db.get_unprocessed_raw_operations(self.__account_id)
+        self.__operations = self.__db.get_unprocessed_raw_operations(self.__bank_account_id)
         self.__incomes_categories_and_sub_categories = config["database"]["incomes"]["categories_subcategories"]
         self.__expenses_categories_and_sub_categories = config["database"]["expenses"]["categories_subcategories"]
         self.__history = []  # Pile pour stocker les opérations précédemment traitées
@@ -281,7 +281,7 @@ class Categorizer:
         last_operation = self.__history.pop()
 
         # Suppression en base de données via l'ID de la transaction
-        self.__db.delete_operation(self.__account_id, last_operation[0])
+        self.__db.delete_operation(self.__bank_account_id, last_operation[0])
 
         # Réinsertion en première position de la liste de travail
         self.__operations.insert(0, last_operation)

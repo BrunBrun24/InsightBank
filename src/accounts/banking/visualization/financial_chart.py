@@ -22,14 +22,14 @@ class FinancialChart:
     - Produire des bilans annuels et mensuels en créant et sauvegardant automatiquement les fichiers HTML.
     """
 
-    def __init__(self, db: BankingDB, account_name: str) -> None:
+    def __init__(self, db: BankingDB, bank_account_name: str) -> None:
         self.__db = db
-        self.__root_path = os.path.join(load_config()["destination_path"], account_name)
+        self.__root_path = os.path.join(load_config()["destination_path"], bank_account_name)
         self.__file_highcharts = []
 
         os.makedirs(self.__root_path, exist_ok=True)
 
-    def generate_all_reports(self, account_id: int) -> None:
+    def generate_all_reports(self, bank_account_id: int) -> None:
         """
         Génère les bilans financiers annuels à partir des opérations catégorisées.
 
@@ -41,7 +41,7 @@ class FinancialChart:
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
         """
 
-        years_data = self.__db.get_categorized_operations_by_year(account_id)
+        years_data = self.__db.get_categorized_operations_by_year(bank_account_id)
 
         all_years_incomes = []
         all_years_expenses = []

@@ -4,10 +4,10 @@ from PIL import Image
 
 from accounts.banking.database.banking_db import BankingDB
 from config import load_config
-from dashboard.account.account import Account
-from dashboard.account.chart.chart import Chart
-from dashboard.account.excel_report.excel_report import ExcelReport
-from dashboard.account.operations.operations import Operations
+from dashboard.bank_accounts.bank_accounts import BankAccounts
+from dashboard.bank_accounts.chart.chart import Chart
+from dashboard.bank_accounts.excel_report.excel_report import ExcelReport
+from dashboard.bank_accounts.operations.operations import Operations
 from dashboard.configuration.configuration import Configuration
 from dashboard.home.home import Home
 
@@ -27,7 +27,7 @@ class Dashboard(ctk.CTk):
 
         self.__configuration_module = Configuration(self.__main_view, self)
         self.__home_module = Home(self.__main_view, self)
-        self.__account_module = Account(self.__main_view, self)
+        self.__account_module = BankAccounts(self.__main_view, self)
         self.__operation_module = Operations(self.__main_view, self)
         self.__chart = Chart(self.__main_view, self)
         self.__excel_report = ExcelReport(self.__main_view, self)
@@ -53,20 +53,20 @@ class Dashboard(ctk.CTk):
     def show_configuration(self) -> None:
         self.__configuration_module.display()
 
-    def show_accounts(self) -> None:
-        self.__account_module.show_accounts()
+    def show_bank_accounts(self) -> None:
+        self.__account_module.show_bank_accounts()
 
-    def show_account_menu(self, account_row: pd.Series) -> None:
-        self.__account_module.show_account_menu(account_row)
+    def show_account_menu(self, bank_account_row: pd.Series) -> None:
+        self.__account_module.show_account_menu(bank_account_row)
 
-    def show_operations(self, account_row: pd.Series) -> None:
-        self.__operation_module.display(account_row)
+    def show_operations(self, bank_account_row: pd.Series) -> None:
+        self.__operation_module.display(bank_account_row)
 
-    def show_charts(self, account_row: pd.Series) -> None:
-        self.__chart.display(account_row)
+    def show_charts(self, bank_account_row: pd.Series) -> None:
+        self.__chart.display(bank_account_row)
 
-    def show_excel_report(self, account_row: pd.Series) -> None:
-        self.__excel_report.display(account_row)
+    def show_excel_report(self, bank_account_row: pd.Series) -> None:
+        self.__excel_report.display(bank_account_row)
 
     def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
         """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""
@@ -167,7 +167,7 @@ class Dashboard(ctk.CTk):
 
         icon_size = (28, 28)
         home_icon = ctk.CTkImage(light_image=Image.open("src/static/img/home.png"), size=icon_size)
-        account_icon = ctk.CTkImage(light_image=Image.open("src/static/img/account.png"), size=icon_size)
+        bank_account_icon = ctk.CTkImage(light_image=Image.open("src/static/img/bank_account.png"), size=icon_size)
         stock_icon = ctk.CTkImage(light_image=Image.open("src/static/img/stock.png"), size=icon_size)
         heritage_icon = ctk.CTkImage(light_image=Image.open("src/static/img/heritage.png"), size=icon_size)
         edit_icon = ctk.CTkImage(light_image=Image.open("src/static/img/edit.png"), size=icon_size)
@@ -185,16 +185,16 @@ class Dashboard(ctk.CTk):
             command=self.show_home,
         ).grid(row=0, column=0, padx=10, pady=(20, 10))
 
-        # Bouton account
+        # Bouton bank_account
         ctk.CTkButton(
             self.__nav_frame,
             text="",
-            image=account_icon,
+            image=bank_account_icon,
             width=40,
             height=40,
             fg_color="transparent",
             hover_color=("gray70", "gray30"),
-            command=self.show_accounts,
+            command=self.show_bank_accounts,
         ).grid(row=1, column=0, padx=10, pady=(10, 20))
 
         # Bouton stock

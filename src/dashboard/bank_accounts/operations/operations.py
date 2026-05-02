@@ -12,7 +12,7 @@ from accounts.banking.importers.data_extractor import DataExtractor
 from accounts.banking.processing.categorizer import Categorizer
 from accounts.banking.reporting.excel_generator import ExcelGenerator as BnpParibasExcelReportGenerator
 from accounts.banking.visualization.financial_chart import FinancialChart
-from dashboard.account.operations.components.operation_edit_window import OperationEditWindow
+from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
 
 
 class Operations:
@@ -26,7 +26,7 @@ class Operations:
         self.__sort_column = "operation_date"
         self.__sort_ascending = False
 
-    def display(self, account_row: pd.Series, page: int = 1) -> None:
+    def display(self, bank_account_row: pd.Series, page: int = 1) -> None:
         """Initialise la structure fixe (Header, Actions) et lance le chargement du tableau."""
 
         self.__controller.destroy_widgets()
@@ -41,7 +41,7 @@ class Operations:
             fg_color=self.__theme["blue_01"]["fg_color"],
             hover_color=self.__theme["blue_01"]["hover_color"],
             width=40,
-            command=lambda: self.__controller.show_account_menu(account_row),
+            command=lambda: self.__controller.show_account_menu(bank_account_row),
         )
         back_btn.place(x=0, y=15)
 
@@ -60,7 +60,7 @@ class Operations:
             text="Importer des opérations",
             fg_color=self.__theme["green"]["fg_color"],
             hover_color=self.__theme["green"]["hover_color"],
-            command=lambda: self.__handle_import_process(account_row),
+            command=lambda: self.__handle_import_process(bank_account_row),
         ).pack(side="left", padx=5)
 
         ctk.CTkButton(
@@ -68,17 +68,17 @@ class Operations:
             text="Ajouter une opération",
             fg_color=self.__theme["green"]["fg_color"],
             hover_color=self.__theme["green"]["hover_color"],
-            command=lambda: self.__handle_add_operation(account_row),
+            command=lambda: self.__handle_add_operation(bank_account_row),
         ).pack(side="left", padx=5)
 
-        operations = self.__db.get_unprocessed_raw_operations(account_row["id"])
+        operations = self.__db.get_unprocessed_raw_operations(bank_account_row["id"])
         ctk.CTkButton(
             account_actions_bar,
             text="Catégoriser les opérations",
             fg_color=self.__theme["blue_01"]["fg_color"],
             hover_color=self.__theme["blue_01"]["hover_color"],
             state="normal" if operations else "disabled",
-            command=lambda: self.__handle_categorization_process(account_row),
+            command=lambda: self.__handle_categorization_process(bank_account_row),
         ).pack(side="left", padx=5)
 
         # Zone d'affichage
@@ -86,20 +86,20 @@ class Operations:
         self.__table_container_wrapper.pack(fill="both", expand=True, padx=20, pady=10)
 
         # Premier chargement du tableau
-        self.__update_table_content(account_row, page)
+        self.__update_table_content(bank_account_row, page)
 
-    def __update_table_content(self, account_row: pd.Series, page: int) -> None:
+    def __update_table_content(self, bank_account_row: pd.Series, page: int) -> None:
         """Rafraîchit uniquement le tableau avec une zone de lignes à hauteur fixe."""
 
         # Nettoyage du conteneur dynamique
         for widget in self.__table_container_wrapper.winfo_children():
             widget.destroy()
 
-        account_id = account_row["id"]
+        bank_account_id = bank_account_row["id"]
         items_per_page = 21
 
         try:
-            df = self.__db.get_operations_by_account(account_id)
+            df = self.__db.get_operations_by_bank_account(bank_account_id)
 
             if not df.empty:
                 # Logique de Tri et Pagination
@@ -174,7 +174,9 @@ class Operations:
                     # On rend le Label cliquable uniquement s'il est dans col_map
                     if col_name in col_map:
                         lbl.configure(cursor="hand2")
-                        lbl.bind("<Button-1>", lambda event, c=col_map[col_name]: self.__sort_handler(account_row, c))
+                        lbl.bind(
+                            "<Button-1>", lambda event, c=col_map[col_name]: self.__sort_handler(bank_account_row, c)
+                        )
 
                     if col_name == "#":
                         lbl.configure(width=50, anchor="center")
@@ -225,7 +227,7 @@ class Operations:
                         height=22,
                         fg_color=self.__theme["blue_01"]["fg_color"],
                         hover_color=self.__theme["blue_01"]["hover_color"],
-                        command=lambda o=operation: self.__handle_edit_operation(o, account_row),
+                        command=lambda o=operation: self.__handle_edit_operation(o, bank_account_row),
                     ).grid(row=0, column=6, padx=5, pady=5)
 
                     ctk.CTkButton(
@@ -235,7 +237,7 @@ class Operations:
                         height=22,
                         fg_color=self.__theme["red"]["fg_color"],
                         hover_color=self.__theme["red"]["hover_color"],
-                        command=lambda o_id=operation["id"]: self.__handle_delete_operation(account_row, o_id),
+                        command=lambda o_id=operation["id"]: self.__handle_delete_operation(bank_account_row, o_id),
                     ).grid(row=0, column=7, padx=5, pady=5)
 
                 # Barre de Pagination
@@ -253,7 +255,7 @@ class Operations:
                     state="normal" if page > 1 else "disabled",
                     fg_color=self.__theme["blue_01"]["fg_color"],
                     hover_color=self.__theme["blue_01"]["hover_color"],
-                    command=lambda: self.__update_table_content(account_row, max(1, page - 10)),
+                    command=lambda: self.__update_table_content(bank_account_row, max(1, page - 10)),
                 ).pack(side="left", padx=5)
 
                 # Précédent
@@ -264,7 +266,7 @@ class Operations:
                     state="normal" if page > 1 else "disabled",
                     fg_color=self.__theme["blue_01"]["fg_color"],
                     hover_color=self.__theme["blue_01"]["hover_color"],
-                    command=lambda: self.__update_table_content(account_row, page - 1),
+                    command=lambda: self.__update_table_content(bank_account_row, page - 1),
                 ).pack(side="left", padx=5)
 
                 ctk.CTkLabel(
@@ -279,7 +281,7 @@ class Operations:
                     state="normal" if page < total_pages else "disabled",
                     fg_color=self.__theme["blue_01"]["fg_color"],
                     hover_color=self.__theme["blue_01"]["hover_color"],
-                    command=lambda: self.__update_table_content(account_row, page + 1),
+                    command=lambda: self.__update_table_content(bank_account_row, page + 1),
                 ).pack(side="left", padx=5)
 
                 # Saut de +10 pages
@@ -290,7 +292,7 @@ class Operations:
                     state="normal" if page < total_pages else "disabled",
                     fg_color=self.__theme["blue_01"]["fg_color"],
                     hover_color=self.__theme["blue_01"]["hover_color"],
-                    command=lambda: self.__update_table_content(account_row, min(total_pages, page + 10)),
+                    command=lambda: self.__update_table_content(bank_account_row, min(total_pages, page + 10)),
                 ).pack(side="left", padx=5)
 
             else:
@@ -301,7 +303,7 @@ class Operations:
                 pady=20
             )
 
-    def __sort_handler(self, account_row: pd.Series, column_name: str) -> None:
+    def __sort_handler(self, bank_account_row: pd.Series, column_name: str) -> None:
         """Tri une colonne en particulier dans l'ordre croissant"""
 
         if self.__sort_column == column_name:
@@ -310,9 +312,9 @@ class Operations:
             self.__sort_column = column_name
             self.__sort_ascending = True
 
-        self.__update_table_content(account_row, page=1)
+        self.__update_table_content(bank_account_row, page=1)
 
-    def __handle_add_operation(self, account_row: pd.Series) -> None:
+    def __handle_add_operation(self, bank_account_row: pd.Series) -> None:
         """Ouvre la fenêtre pour ajouter une nouvelle opération."""
 
         # On définit les valeurs par défaut pour une nouvelle ligne
@@ -328,125 +330,125 @@ class Operations:
         win = OperationEditWindow(
             parent=self.__master,
             db=self.__db,
-            account_id=account_row["id"],
+            bank_account_id=bank_account_row["id"],
             operation=default_op,
-            on_save_callback=lambda data: self.__process_add(data, account_row),
+            on_save_callback=lambda data: self.__process_add(data, bank_account_row),
         )
         win.title("Ajouter une opération")
 
-    def __handle_delete_operation(self, account_row: pd.Series, operation_id: int) -> None:
+    def __handle_delete_operation(self, bank_account_row: pd.Series, operation_id: int) -> None:
         """Gère la suppression d'une opération et rafraîchit l'affichage."""
 
         try:
-            self.__db.delete_operation(account_row["id"], operation_id)
-            self.__update_bilan(account_row["id"], account_row["name"])
-            self.__controller.show_operations(account_row)
+            self.__db.delete_operation(bank_account_row["id"], operation_id)
+            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+            self.__controller.show_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror(f"Erreur lors de la suppression d'une opération' : {str(e)}")
             raise
 
-    def __handle_edit_operation(self, operation: pd.Series, account_row: pd.Series) -> None:
+    def __handle_edit_operation(self, operation: pd.Series, bank_account_row: pd.Series) -> None:
         """Ouvre la fenêtre de modification pour une opération donnée."""
 
         OperationEditWindow(
             self.__master,
             self.__db,
-            account_row["id"],
+            bank_account_row["id"],
             operation,
-            lambda data: self.__process_update(data, account_row),
+            lambda data: self.__process_update(data, bank_account_row),
         )
 
-    def __handle_import_process(self, account_row: pd.Series) -> None:
+    def __handle_import_process(self, bank_account_row: pd.Series) -> None:
         """Lance l'extraction et injecte le nom du compte sélectionné dans les données."""
 
         try:
             extractor = DataExtractor()
-            df = extractor.run_extraction(account_row["id"])
+            df = extractor.run_extraction(bank_account_row["id"])
 
             if df is None:
                 return
 
-            df["account_id"] = account_row["id"]
+            df["bank_account_id"] = bank_account_row["id"]
             self.__db.add_operations(df)
 
             # Catégorise les différentes opérations
-            categorizer = Categorizer(self.__master, self.__db, account_row["id"])
+            categorizer = Categorizer(self.__master, self.__db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
                 self.__master.wait_window(cat_window)
 
-            self.__update_bilan(account_row["id"], account_row["name"])
+            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
 
             messagebox.showinfo(
                 "Succès",
-                f"Données importées avec succès pour le compte : {account_row['name']}",
+                f"Données importées avec succès pour le compte : {bank_account_row['name']}",
             )
-            self.__controller.show_operations(account_row)
+            self.__controller.show_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de l'insertion : {e}")
             raise
 
-    def __handle_categorization_process(self, account_row: pd.Series) -> None:
+    def __handle_categorization_process(self, bank_account_row: pd.Series) -> None:
         """Lance le processus de catégorisation."""
 
         try:
-            categorizer = Categorizer(self.__master, self.__db, account_row["id"])
+            categorizer = Categorizer(self.__master, self.__db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
                 self.__master.wait_window(cat_window)
 
             if categorizer.has_changed:
-                self.__update_bilan(account_row["id"], account_row["name"])
-                self.__controller.show_operations(account_row)
+                self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+                self.__controller.show_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de la catégorisation : {e}")
             raise
 
-    def __process_add(self, new_operation: dict, account_row: pd.Series) -> None:
+    def __process_add(self, new_operation: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
 
         try:
             df = pd.DataFrame([new_operation])
             self.__db.add_operations(df)
-            self.__update_bilan(account_row["id"], account_row["name"])
-            self.__controller.show_operations(account_row)
+            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+            self.__controller.show_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de l'ajout : {e}")
             raise
 
-    def __process_update(self, updated_data: dict, account_row: pd.Series) -> None:
+    def __process_update(self, updated_data: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
 
         try:
-            self.__db.update_operation(account_row["id"], updated_data)
-            self.__update_bilan(account_row["id"], account_row["name"])
-            self.__controller.show_operations(account_row)
+            self.__db.update_operation(bank_account_row["id"], updated_data)
+            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+            self.__controller.show_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de la mise à jour : {e}")
             raise
 
-    def __update_bilan(self, account_id: int, account_name: str) -> None:
+    def __update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un compte bancaire."""
 
         # Supprime le dossier bilan du compte pour que les données soient à jour
-        path = os.path.join(self.__config["destination_path"], account_name)
+        path = os.path.join(self.__config["destination_path"], bank_account_name)
         if os.path.exists(path):
             shutil.rmtree(path)
 
         # Créer les graphiques HTML
-        chart_generator = FinancialChart(self.__db, account_name)
-        chart_generator.generate_all_reports(account_id)
+        chart_generator = FinancialChart(self.__db, bank_account_name)
+        chart_generator.generate_all_reports(bank_account_id)
 
         # Créer les fichiers Excel
-        excel_generator = BnpParibasExcelReportGenerator(self.__db, account_name)
-        excel_generator.generate_all_reports(account_id)
+        excel_generator = BnpParibasExcelReportGenerator(self.__db, bank_account_name)
+        excel_generator.generate_all_reports(bank_account_id)
 
     @staticmethod
     def __remove_accents(input_str: str) -> str:

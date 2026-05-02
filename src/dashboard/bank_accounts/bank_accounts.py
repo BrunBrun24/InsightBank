@@ -9,7 +9,7 @@ from accounts.banking.reporting.excel_generator import ExcelGenerator
 from accounts.banking.visualization.financial_chart import FinancialChart
 
 
-class Account:
+class BankAccounts:
     def __init__(self, master: ctk.CTkFrame, controller) -> None:
         self.__master = master
         self.__controller = controller
@@ -17,7 +17,7 @@ class Account:
         self.__db = controller.get_db()
         self.__config = controller.get_config()
 
-    def show_accounts(self) -> None:
+    def show_bank_accounts(self) -> None:
         """Affiche le Dashboard global avec les comptes sous forme de cartes."""
 
         self.__controller.destroy_widgets()
@@ -33,7 +33,7 @@ class Account:
             text="+ Ajouter un compte",
             fg_color=self.__theme["green"]["fg_color"],
             hover_color=self.__theme["green"]["hover_color"],
-            command=self.__handle_add_account,
+            command=self.__handle_add_bank_account,
         ).pack(side="right")
 
         # Grille des comptes
@@ -45,7 +45,7 @@ class Account:
         scroll_container.grid_columnconfigure((0, 1, 2), weight=1, pad=20)
 
         try:
-            account_df = self.__db.get_all_accounts()
+            account_df = self.__db.get_all_bank_accounts()
             if not account_df.empty:
                 for index, row in account_df.iterrows():
                     self.__create_account_card(scroll_container, row, index)
@@ -56,7 +56,7 @@ class Account:
         except Exception as e:
             raise e
 
-    def show_account_menu(self, account_row: pd.Series) -> None:
+    def show_account_menu(self, bank_account_row: pd.Series) -> None:
         """Affiche les différentes actions que l'on peut effectuer sur un compte"""
 
         self.__controller.destroy_widgets()
@@ -72,11 +72,11 @@ class Account:
             fg_color=self.__theme["blue_01"]["fg_color"],
             hover_color=self.__theme["blue_01"]["hover_color"],
             width=40,
-            command=self.__controller.show_accounts,
+            command=self.__controller.show_bank_accounts,
         )
         back_btn.place(x=0, y=15)
 
-        title_label = ctk.CTkLabel(header_frame, text=f"{account_row['name']}", font=("Arial", 60, "bold"))
+        title_label = ctk.CTkLabel(header_frame, text=f"{bank_account_row['name']}", font=("Arial", 60, "bold"))
         title_label.pack(expand=True)
 
         # Conteneur principal
@@ -92,7 +92,7 @@ class Account:
                 "fg_color": self.__theme["blue_02"]["fg_color"],
                 "hover_color": self.__theme["blue_02"]["hover_color"],
                 "icon_path": "src/static/img/directory.png",
-                "cmd": lambda: self.__controller.show_operations(account_row),
+                "cmd": lambda: self.__controller.show_operations(bank_account_row),
             },
             {
                 "name": "Analyses",
@@ -100,7 +100,7 @@ class Account:
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["fg_color"],
                 "icon_path": "src/static/img/chart.png",
-                "cmd": lambda: self.__controller.show_charts(account_row),
+                "cmd": lambda: self.__controller.show_charts(bank_account_row),
             },
             {
                 "name": "Rapports",
@@ -108,7 +108,7 @@ class Account:
                 "fg_color": self.__theme["magenta"]["fg_color"],
                 "hover_color": self.__theme["magenta"]["hover_color"],
                 "icon_path": "src/static/img/file.png",
-                "cmd": lambda: self.__controller.show_excel_report(account_row),
+                "cmd": lambda: self.__controller.show_excel_report(bank_account_row),
             },
         ]
 
@@ -128,9 +128,9 @@ class Account:
         lbl_name.pack(pady=(15, 2))
 
         # Récupération des statistiques
-        stats = self.__db.get_account_statistics(row["id"])
+        stats = self.__db.get_bank_account_statistics(row["id"])
 
-        total_amount = stats.get("account_amount", 0.0)
+        total_amount = stats.get("bank_account_amount", 0.0)
 
         # Formatage du texte
         formatted_balance = f"{total_amount:,.2f}".replace(",", " ").replace(".", ",") + " €"
@@ -171,7 +171,7 @@ class Account:
                 "text": "Supprimer",
                 "fg_color": self.__theme["red"]["fg_color"],
                 "hover_color": self.__theme["red"]["hover_color"],
-                "cmd": lambda: self.__handle_delete_account(row["id"], row["name"]),
+                "cmd": lambda: self.__handle_delete_bank_account(row["id"], row["name"]),
             },
         ]
 
@@ -187,7 +187,7 @@ class Account:
             )
             btn.grid(row=0, column=i, padx=5)
 
-    def __handle_add_account(self) -> None:
+    def __handle_add_bank_account(self) -> None:
         """Ouvre une boîte de dialogue pour créer un nouveau compte bancaire."""
 
         dialog = ctk.CTkInputDialog(text="Entrez le nom du nouveau compte :", title="Nouveau Compte")
@@ -195,12 +195,12 @@ class Account:
         dialog.transient(self.__master)
         dialog.attributes("-topmost", False)
 
-        account_name = dialog.get_input()
+        bank_account_name = dialog.get_input()
 
-        if account_name:
+        if bank_account_name:
             try:
-                self.__db.add_account(account_name)
-                self.__controller.show_accounts()
+                self.__db.add_bank_account(bank_account_name)
+                self.__controller.show_bank_accounts()
 
             except ValueError as e:
                 messagebox.showwarning("Doublon", str(e))
@@ -208,28 +208,28 @@ class Account:
                 messagebox.showerror("Erreur", f"Impossible de créer le compte : {e}")
                 raise
 
-    def __handle_delete_account(self, account_id: int, account_name: str) -> None:
+    def __handle_delete_bank_account(self, bank_account_id: int, bank_account_name: str) -> None:
         """Demande confirmation avant de supprimer un compte et ses données."""
 
         if messagebox.askyesno(
             "Confirmation",
-            f"Supprimer le compte '{account_name}' ?\nCette action est irréversible.",
+            f"Supprimer le compte '{bank_account_name}' ?\nCette action est irréversible.",
         ):
             try:
                 # Supprime le dossier bilan du compte
-                path = os.path.join(self.__config["destination_path"], account_name)
+                path = os.path.join(self.__config["destination_path"], bank_account_name)
                 if os.path.exists(path):
                     shutil.rmtree(path)
 
-                self.__db.delete_account(account_id)
-                self.__controller.show_accounts()
+                self.__db.delete_bank_account(bank_account_id)
+                self.__controller.show_bank_accounts()
             except Exception as e:
                 messagebox.showerror(
                     "Erreur de suppression", f"Impossible de supprimer le compte ou ses fichiers :\n{str(e)}"
                 )
                 raise
 
-    def __handle_edit_account(self, account_id: int, old_name: str) -> None:
+    def __handle_edit_account(self, bank_account_id: int, old_name: str) -> None:
         """Ouvre un dialogue centré et immobile pour renommer le compte."""
 
         dialog = ctk.CTkInputDialog(
@@ -246,26 +246,26 @@ class Account:
 
         if new_name and new_name != old_name:
             try:
-                self.__db.update_account_name(account_id, new_name)
-                self.__update_bilan(account_id, new_name)
-                self.__controller.show_accounts()
+                self.__db.update_bank_account_name(bank_account_id, new_name)
+                self.__update_bilan(bank_account_id, new_name)
+                self.__controller.show_bank_accounts()
 
             except Exception as e:
                 messagebox.showerror(f"Erreur lors de la modification du nom du compte : {str(e)}")
                 raise
 
-    def __update_bilan(self, account_id: int, account_name: str) -> None:
+    def __update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un compte bancaire."""
 
         # Supprime le dossier bilan du compte pour que les données soient à jour
-        path = os.path.join(self.__config["destination_path"], account_name)
+        path = os.path.join(self.__config["destination_path"], bank_account_name)
         if os.path.exists(path):
             shutil.rmtree(path)
 
         # Créer les graphiques HTML
-        chart_generator = FinancialChart(self.__db, account_name)
-        chart_generator.generate_all_reports(account_id)
+        chart_generator = FinancialChart(self.__db, bank_account_name)
+        chart_generator.generate_all_reports(bank_account_id)
 
         # Créer les fichiers Excel
-        excel_generator = ExcelGenerator(self.__db, account_name)
-        excel_generator.generate_all_reports(account_id)
+        excel_generator = ExcelGenerator(self.__db, bank_account_name)
+        excel_generator.generate_all_reports(bank_account_id)

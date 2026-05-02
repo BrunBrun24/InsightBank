@@ -18,18 +18,18 @@ class BankingDB(DatabaseBase):
         self._create_database()
         self.__verify_category_consistency()
 
-    def add_account(self, account_name: str) -> None:
+    def add_bank_account(self, bank_account_name: str) -> None:
         """Ajout d'un nouveau compte bancaire."""
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
             # Vérifier si le nom existe déjà
-            cursor.execute("SELECT id FROM account WHERE name = ?", (account_name,))
+            cursor.execute("SELECT id FROM bank_accounts WHERE name = ?", (bank_account_name,))
             if cursor.fetchone():
-                raise ValueError(f"Le compte '{account_name}' existe déjà.")
+                raise ValueError(f"Le compte '{bank_account_name}' existe déjà.")
 
-            cursor.execute("INSERT INTO account (name) VALUES (?)", (account_name,))
+            cursor.execute("INSERT INTO bank_accounts (name) VALUES (?)", (bank_account_name,))
 
     def add_operations(self, operations_df: pd.DataFrame) -> None:
         """Ajoute plusieurs opérations dans la BDD."""
@@ -53,36 +53,36 @@ class BankingDB(DatabaseBase):
         with self._get_connection() as conn:
             operations_df.to_sql(name="raw_data", con=conn, if_exists="append", index=False)
 
-    def delete_account(self, account_id: str) -> None:
+    def delete_bank_account(self, bank_account_id: str) -> None:
         """Ajout d'un nouveau compte bancaire."""
 
         with self._get_connection() as conn:
-            conn.cursor().execute("DELETE FROM account WHERE id = ?", (account_id,))
+            conn.cursor().execute("DELETE FROM bank_accounts WHERE id = ?", (bank_account_id,))
 
-    def delete_operation(self, account_id: int, raw_data_id: int) -> None:
+    def delete_operation(self, bank_account_id: int, raw_data_id: int) -> None:
         """Supprime une opération d'un compte bancaire"""
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
             cursor.execute(
-                "DELETE FROM raw_data WHERE account_id = ? AND id = ?",
+                "DELETE FROM raw_data WHERE bank_account_id = ? AND id = ?",
                 (
-                    account_id,
+                    bank_account_id,
                     raw_data_id,
                 ),
             )
 
-    def update_account_name(self, account_id: int, new_name: str) -> None:
+    def update_bank_account_name(self, bank_account_id: int, new_name: str) -> None:
         """Met à jour le nom d'un compte bancaire"""
 
         with self._get_connection() as conn:
             conn.cursor().execute(
-                "UPDATE account SET name = ? WHERE id = ?",
-                (new_name, account_id),
+                "UPDATE bank_accounts SET name = ? WHERE id = ?",
+                (new_name, bank_account_id),
             )
 
-    def update_operation(self, account_id: int, updated_data: dict) -> bool:
+    def update_operation(self, bank_account_id: int, updated_data: dict) -> bool:
         """Mets à jour une opération d'un compte bancaire"""
 
         with self._get_connection() as conn:
@@ -96,9 +96,9 @@ class BankingDB(DatabaseBase):
                     amount = ?, 
                     short_label = ?, 
                     operation_type = ?, 
-                    category_id = (SELECT id FROM categories WHERE name = ? AND account_id = ?),
+                    category_id = (SELECT id FROM categories WHERE name = ? AND bank_account_id = ?),
                     sub_category_id = (SELECT id FROM sub_categories WHERE name = ? 
-                                       AND category_id = (SELECT id FROM categories WHERE name = ? AND account_id = ?))
+                                       AND category_id = (SELECT id FROM categories WHERE name = ? AND bank_account_id = ?))
                 WHERE id = ?
                 """,
                 (
@@ -108,10 +108,10 @@ class BankingDB(DatabaseBase):
                     updated_data["short_label"],
                     updated_data["operation_type"],
                     updated_data["category"],
-                    account_id,
+                    bank_account_id,
                     updated_data["sub_category"],
                     updated_data["category"],
-                    account_id,
+                    bank_account_id,
                     updated_data["id"],
                 ),
             )
@@ -146,7 +146,7 @@ class BankingDB(DatabaseBase):
                 ),
             )
 
-    def get_operations_by_account(self, account_id: int) -> pd.DataFrame:
+    def get_operations_by_bank_account(self, bank_account_id: int) -> pd.DataFrame:
         """Retourne toutes les transactions liées à compte bancaire"""
 
         query = """
@@ -162,20 +162,20 @@ class BankingDB(DatabaseBase):
             FROM raw_data r
             JOIN categories c ON r.category_id = c.id
             JOIN sub_categories s ON r.sub_category_id = s.id
-            WHERE r.account_id = ?
+            WHERE r.bank_account_id = ?
             ORDER BY r.operation_date DESC
         """
 
         with self._get_connection() as conn:
-            return pd.read_sql_query(query, conn, params=(account_id,))
+            return pd.read_sql_query(query, conn, params=(bank_account_id,))
 
-    def get_all_accounts(self) -> pd.DataFrame:
-        """Retourne la table account triée par nombre d'opérations décroissant."""
+    def get_all_bank_accounts(self) -> pd.DataFrame:
+        """Retourne la table bank_accounts triée par nombre d'opérations décroissant."""
 
         query = """
             SELECT b.*, COUNT(r.id) as nb_operations
-            FROM account b
-            LEFT JOIN raw_data r ON b.id = r.account_id
+            FROM bank_accounts b
+            LEFT JOIN raw_data r ON b.id = r.bank_account_id
             GROUP BY b.id
             ORDER BY nb_operations DESC
         """
@@ -183,16 +183,18 @@ class BankingDB(DatabaseBase):
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
 
-    def get_account_statistics(self, account_id: int) -> dict:
+    def get_bank_account_statistics(self, bank_account_id: int) -> dict:
         """Calcule les statistiques d'utilisation d'un compte bancaire."""
 
-        stats = {"total": 0, "processed": 0, "remaining": 0, "categories": 0, "account_amount": 0}
+        stats = {"total": 0, "processed": 0, "remaining": 0, "categories": 0, "bank_account_amount": 0}
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
             # Calcule le nombre total d'opérations et ceux qui sont déjà triés
-            cursor.execute("SELECT COUNT(*), COUNT(category_id) FROM raw_data WHERE account_id = ?", (account_id,))
+            cursor.execute(
+                "SELECT COUNT(*), COUNT(category_id) FROM raw_data WHERE bank_account_id = ?", (bank_account_id,)
+            )
 
             res = cursor.fetchone()
             if res:
@@ -206,9 +208,11 @@ class BankingDB(DatabaseBase):
             stats["categories"] = res_cat[0] if res_cat else 0
 
             # Somme d'argent sur le compte
-            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM raw_data WHERE account_id = ?", (account_id,))
+            cursor.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM raw_data WHERE bank_account_id = ?", (bank_account_id,)
+            )
             res_sum = cursor.fetchone()
-            stats["account_amount"] = res_sum[0]
+            stats["bank_account_amount"] = res_sum[0]
 
         return stats
 
@@ -276,7 +280,7 @@ class BankingDB(DatabaseBase):
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
 
-    def get_unprocessed_raw_operations(self, account_id: int) -> list:
+    def get_unprocessed_raw_operations(self, bank_account_id: int) -> list:
         """Récupère les transactions brutes non traitées"""
 
         with self._get_connection() as conn:
@@ -285,16 +289,16 @@ class BankingDB(DatabaseBase):
             cursor.execute(
                 """
                 SELECT id, operation_date, short_label, operation_type, label, amount
-                FROM raw_data WHERE account_id = ? AND category_id IS NULL
+                FROM raw_data WHERE bank_account_id = ? AND category_id IS NULL
                 ORDER BY operation_date ASC, id ASC
                 """,
-                (account_id,),
+                (bank_account_id,),
             )
 
             rows = cursor.fetchall()
             return rows
 
-    def get_categorized_operations_df(self, account_id: int) -> pd.DataFrame:
+    def get_categorized_operations_df(self, bank_account_id: int) -> pd.DataFrame:
         """Récupère les opérations catégorisées."""
 
         with self._get_connection() as conn:
@@ -311,11 +315,11 @@ class BankingDB(DatabaseBase):
                 FROM raw_data r
                 JOIN categories c ON r.category_id = c.id
                 JOIN sub_categories sc ON r.sub_category_id = sc.id
-                WHERE account_id = ?
+                WHERE bank_account_id = ?
                 ORDER BY r.operation_date ASC, r.id ASC
             """
 
-            df = pd.read_sql_query(query, conn, params=(account_id,))
+            df = pd.read_sql_query(query, conn, params=(bank_account_id,))
 
         df["operation_date"] = pd.to_datetime(df["operation_date"])
 
@@ -337,14 +341,14 @@ class BankingDB(DatabaseBase):
 
         return incomes_list, expenses_list
 
-    def get_categorized_operations_by_year(self, account_id: int) -> dict[str, pd.DataFrame]:
+    def get_categorized_operations_by_year(self, bank_account_id: int) -> dict[str, pd.DataFrame]:
         """Regroupe les opérations catégorisées par année et par type."""
 
         # 1. On récupère les différentes catégories pour les revenus et les dépenses
         incomes_list, expenses_list = self.get_category_lists()
 
         # 2. On récupère toutes les opérations
-        operations = self.get_categorized_operations_df(account_id).reset_index(drop=True)
+        operations = self.get_categorized_operations_df(bank_account_id).reset_index(drop=True)
         operations["year"] = operations["operation_date"].dt.year
         operations["amount"] = operations["amount"].abs()
 
@@ -423,7 +427,7 @@ class BankingDB(DatabaseBase):
             cursor = conn.cursor()
 
             cursor.executescript("""
-                CREATE TABLE IF NOT EXISTS account (
+                CREATE TABLE IF NOT EXISTS bank_accounts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
 
@@ -449,7 +453,7 @@ class BankingDB(DatabaseBase):
 
                 CREATE TABLE IF NOT EXISTS raw_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    account_id INTEGER NOT NULL,
+                    bank_account_id INTEGER NOT NULL,
                     category_id INTEGER,
                     sub_category_id INTEGER,
                     operation_date DATE NOT NULL,
@@ -458,10 +462,20 @@ class BankingDB(DatabaseBase):
                     label TEXT NOT NULL,
                     amount REAL NOT NULL,
                     
-                    FOREIGN KEY (account_id) REFERENCES account(id) ON DELETE CASCADE,
+                    FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE CASCADE,
                     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
                     FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id) ON DELETE SET NULL
                 );
+                
+                CREATE TRIGGER IF NOT EXISTS force_category_null_on_sub_null
+                AFTER UPDATE OF sub_category_id ON raw_data
+                FOR EACH ROW
+                WHEN NEW.sub_category_id IS NULL
+                BEGIN
+                    UPDATE raw_data
+                    SET category_id = NULL
+                    WHERE id = NEW.id;
+                END;
             """)
 
     def __verify_category_consistency(self) -> None:

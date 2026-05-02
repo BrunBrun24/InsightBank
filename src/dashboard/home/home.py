@@ -29,8 +29,8 @@ class Home:
                 "desc": "Gérer vos différents\ncomptes.",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
-                "icon_path": "src/static/img/account.png",
-                "cmd": lambda: self.__controller.show_accounts(),
+                "icon_path": "src/static/img/bank_account.png",
+                "cmd": lambda: self.__controller.show_bank_accounts(),
             },
             {
                 "name": "Bourse",

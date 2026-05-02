@@ -44,7 +44,7 @@ class Configuration:
             0,
             "Source Bancaire",
             "Renseignez ici les établissements bancaires que vous utilisez au quotidien, tels que la BNP Paribas, Boursorama ou le Crédit Agricole. Cette étape est essentielle pour identifier la provenance de vos flux financiers et permettre à l'application d'extraire et de traiter correctement vos données par la suite pour vos analyses.",
-            "src/static/img/account.png",
+            "src/static/img/bank_account.png",
             self.__config["bank"],
             command=self.__update_config_bank,
             widget_type="menu",

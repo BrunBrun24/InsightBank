@@ -11,9 +11,9 @@ from accounts.banking.database.banking_db import BankingDB
 class ExcelGenerator:
     """Générateur de rapports financiers au format Excel."""
 
-    def __init__(self, db: BankingDB, account_name: str) -> None:
+    def __init__(self, db: BankingDB, bank_account_name: str) -> None:
         self.__db = db
-        self.__root_path = os.path.join(load_config()["destination_path"], account_name)
+        self.__root_path = os.path.join(load_config()["destination_path"], bank_account_name)
         self.__months = [
             "JAN",
             "FÉV",
@@ -34,10 +34,10 @@ class ExcelGenerator:
 
         os.makedirs(self.__root_path, exist_ok=True)
 
-    def generate_all_reports(self, account_id: int) -> None:
+    def generate_all_reports(self, bank_account_id: int) -> None:
         """Génère les rapports pour chaque année présente en base."""
 
-        df = self.__db.get_categorized_operations_df(account_id)
+        df = self.__db.get_categorized_operations_df(bank_account_id)
 
         if df.empty:
             return
@@ -46,12 +46,12 @@ class ExcelGenerator:
         years = sorted(df["operation_date"].dt.year.unique())
 
         for year in years:
-            self.__generate_annual_report(account_id, year)
+            self.__generate_annual_report(bank_account_id, year)
 
-    def __generate_annual_report(self, account_id: int, year: int) -> None:
+    def __generate_annual_report(self, bank_account_id: int, year: int) -> None:
         """Génère le rapport Excel avec colonnes décalées et tri décroissant."""
 
-        data_summary = self.__get_monthly_amounts(account_id, year)
+        data_summary = self.__get_monthly_amounts(bank_account_id, year)
         structure = self.__get_filtered_structure(data_summary)
 
         if not structure:
@@ -298,10 +298,10 @@ class ExcelGenerator:
             ),
         }
 
-    def __get_monthly_amounts(self, account_id: int, year: int) -> pd.DataFrame:
+    def __get_monthly_amounts(self, bank_account_id: int, year: int) -> pd.DataFrame:
         """Récupère les sommes des opérations groupées par mois et par sous-catégorie."""
 
-        df = self.__db.get_categorized_operations_df(account_id)
+        df = self.__db.get_categorized_operations_df(bank_account_id)
         if df.empty:
             return pd.DataFrame(columns=["sub_category", "month_idx", "amount"])
 

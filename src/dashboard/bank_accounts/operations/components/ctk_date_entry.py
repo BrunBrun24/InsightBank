@@ -3,7 +3,7 @@ from datetime import datetime
 import customtkinter as ctk
 
 from config import load_config
-from dashboard.account.operations.components.custom_calendar import CustomCalendar
+from dashboard.bank_accounts.operations.components.custom_calendar import CustomCalendar
 
 
 class CtkDateEntry(ctk.CTkFrame):

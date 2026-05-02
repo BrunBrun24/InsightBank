@@ -4,7 +4,7 @@ import customtkinter as ctk
 
 from accounts.banking.database.banking_db import BankingDB
 from config import load_config
-from dashboard.account.operations.components.ctk_date_entry import CtkDateEntry
+from dashboard.bank_accounts.operations.components.ctk_date_entry import CtkDateEntry
 
 
 class OperationEditWindow(ctk.CTkToplevel):
@@ -14,7 +14,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         self,
         parent,
         db: BankingDB,
-        account_id: int,
+        bank_account_id: int,
         operation: dict,
         on_save_callback: callable,
     ) -> None:
@@ -29,7 +29,7 @@ class OperationEditWindow(ctk.CTkToplevel):
 
         self.__config = load_config()
         self.__theme = self.__config["theme"]
-        self.__account_id = account_id
+        self.__bank_account_id = bank_account_id
         self.__op = operation
         self._on_save = on_save_callback
         self.__entries = {}
@@ -249,7 +249,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         raw_date = self.__date_picker.get()
 
         data["id"] = self.__op["id"]
-        data["account_id"] = self.__account_id
+        data["bank_account_id"] = self.__bank_account_id
 
         # 2. Validation de la DATE
         # On vérifie si la date est présente et suit le format attendu (YYYY-MM-DD)
