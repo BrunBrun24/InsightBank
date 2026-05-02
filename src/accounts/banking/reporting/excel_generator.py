@@ -5,13 +5,13 @@ import pandas as pd
 import xlsxwriter
 
 from config import load_config
-from database.bnp_paribas_database import BnpParibasDatabase
+from accounts.banking.database.banking_db import BankingDB
 
 
-class ExcelReportGenerator:
+class ExcelGenerator:
     """Générateur de rapports financiers au format Excel."""
 
-    def __init__(self, db: BnpParibasDatabase, account_name: str) -> None:
+    def __init__(self, db: BankingDB, account_name: str) -> None:
         self.__db = db
         self.__root_path = os.path.join(load_config()["destination_path"], account_name)
         self.__months = [

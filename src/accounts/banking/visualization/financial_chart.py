@@ -7,13 +7,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from config import load_config
-from database.bnp_paribas_database import BnpParibasDatabase
+from accounts.banking.database.banking_db import BankingDB
 
 
 class FinancialChart:
     """
     Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire.
-    Elle hérite de `BnpParibasDatabase` et fournit des méthodes pour :
+    Elle hérite de `BankingDB` et fournit des méthodes pour :
 
     - Créer des dossiers annuels pour organiser les graphiques.
     - Générer des graphiques Sankey, en barres empilées et circulaires (sunburst) pour visualiser
@@ -22,7 +22,7 @@ class FinancialChart:
     - Produire des bilans annuels et mensuels en créant et sauvegardant automatiquement les fichiers HTML.
     """
 
-    def __init__(self, db: BnpParibasDatabase, account_name: str) -> None:
+    def __init__(self, db: BankingDB, account_name: str) -> None:
         self.__db = db
         self.__root_path = os.path.join(load_config()["destination_path"], account_name)
         self.__file_highcharts = []
@@ -128,7 +128,7 @@ class FinancialChart:
         """
 
         # 1. Récupération dynamique des catégories de revenus
-        # On suppose que self.__db est ton instance de BnpParibasDatabase
+        # On suppose que self.__db est ton instance de BankingDB
         incomes_categories, _ = self.__db.get_category_lists()
 
         # Génération d'un ID unique pour éviter les conflits si plusieurs graphiques

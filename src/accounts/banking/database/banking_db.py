@@ -6,10 +6,10 @@ import pandas as pd
 
 from config import load_config
 
-from .database import Database
+from ...shared.database_base import DatabaseBase
 
 
-class BnpParibasDatabase(Database):
+class BankingDB(DatabaseBase):
     """Gère l'accès et la manipulation des données financières d'un compte bancaire."""
 
     def __init__(self, db_path: str) -> None:

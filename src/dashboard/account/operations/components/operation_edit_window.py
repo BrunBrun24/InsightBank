@@ -2,9 +2,9 @@ from datetime import datetime
 
 import customtkinter as ctk
 
+from accounts.banking.database.banking_db import BankingDB
 from config import load_config
-from dashboard.ctk_date_entry import CtkDateEntry
-from database.bnp_paribas_database import BnpParibasDatabase
+from dashboard.account.operations.components.ctk_date_entry import CtkDateEntry
 
 
 class OperationEditWindow(ctk.CTkToplevel):
@@ -13,7 +13,7 @@ class OperationEditWindow(ctk.CTkToplevel):
     def __init__(
         self,
         parent,
-        db: BnpParibasDatabase,
+        db: BankingDB,
         account_id: int,
         operation: dict,
         on_save_callback: callable,
@@ -35,11 +35,11 @@ class OperationEditWindow(ctk.CTkToplevel):
         self.__entries = {}
 
         # Sources de données issues du JSON (Labels et Types)
-        self.inc__json = self.__config["database"]["incomes"]
-        self.exp__json = self.__config["database"]["expenses"]
+        self.__inc__json = self.__config["database"]["incomes"]
+        self.__exp__json = self.__config["database"]["expenses"]
 
         # Sources de données issues de la BDD (Catégories et Sous-catégories)
-        self.inc__db, self.exp__db = db.get_categories_hierarchy()
+        self.__inc__db, self.__exp__db = db.get_categories_hierarchy()
 
         # On stocke les références des widgets de menus pour les rafraîchir plus tard
         self.__menus_refs = []
@@ -132,9 +132,9 @@ class OperationEditWindow(ctk.CTkToplevel):
 
             # Sélection de la source (DB pour catégories, JSON pour labels/types)
             if use_db:
-                source = self.inc__db if is_income else self.exp__db
+                source = self.__inc__db if is_income else self.__exp__db
             else:
-                source = self.inc__json[json_key] if is_income else self.exp__json[json_key]
+                source = self.__inc__json[json_key] if is_income else self.__exp__json[json_key]
 
             # Mettre à jour le menu parent
             new_parents = list(source.keys())
@@ -163,9 +163,9 @@ class OperationEditWindow(ctk.CTkToplevel):
             is_inc = True
 
         if use_db:
-            source = self.inc__db if is_inc else self.exp__db
+            source = self.__inc__db if is_inc else self.__exp__db
         else:
-            source = self.inc__json[json_key] if is_inc else self.exp__json[json_key]
+            source = self.__inc__json[json_key] if is_inc else self.__exp__json[json_key]
 
         # Menu Parent
         parent_frame = ctk.CTkFrame(container, fg_color="transparent")
@@ -195,12 +195,12 @@ class OperationEditWindow(ctk.CTkToplevel):
             command=lambda val: self.__sync_menus(
                 val,
                 child_menu,
-                (self.inc__db if float(self.__amount_var.get().replace(",", ".")) >= 0 else self.exp__db)
+                (self.__inc__db if float(self.__amount_var.get().replace(",", ".")) >= 0 else self.__exp__db)
                 if use_db
                 else (
-                    self.inc__json[json_key]
+                    self.__inc__json[json_key]
                     if float(self.__amount_var.get().replace(",", ".")) >= 0
-                    else self.exp__json[json_key]
+                    else self.__exp__json[json_key]
                 ),
             ),
         )

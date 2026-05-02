@@ -3,11 +3,11 @@ from typing import Dict, List
 
 import customtkinter as ctk
 
+from accounts.banking.database.banking_db import BankingDB
 from config import load_config
-from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class OperationCategorizer:
+class Categorizer:
     """
     Fournit une interface graphique pour la catégorisation des opérations financières.
 
@@ -19,7 +19,7 @@ class OperationCategorizer:
     - Enregistrer les opérations catégorisées dans la base et les marquer comme traitées.
     """
 
-    def __init__(self, parent: ctk.CTk, db: BnpParibasDatabase, account_id: int, buttons_per_row=5) -> None:
+    def __init__(self, parent: ctk.CTk, db: BankingDB, account_id: int, buttons_per_row=5) -> None:
         """
         Initialise l'interface de catégorisation et charge les données nécessaires.
 

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Any, Generator
 
 
-class Database(ABC):
+class DatabaseBase(ABC):
     """Fournit une interface de base pour interagir avec une base de données SQLite."""
 
     def __init__(self, db_path: str) -> None:
