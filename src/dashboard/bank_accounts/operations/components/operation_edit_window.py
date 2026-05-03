@@ -64,7 +64,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         date_frame = ctk.CTkFrame(date_amount_row, fg_color="transparent")
         date_frame.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         ctk.CTkLabel(date_frame, text="Date", anchor="w").pack(fill="x")
-        self.__date_picker = CtkDateEntry(date_frame)
+        self.__date_picker = CtkDateEntry(date_frame, initial_date=self.__op["operation_date"])
         self.__date_picker.pack(fill="x", pady=5)
 
         amount_frame = ctk.CTkFrame(date_amount_row, fg_color="transparent")
