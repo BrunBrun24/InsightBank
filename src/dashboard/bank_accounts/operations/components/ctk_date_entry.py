@@ -9,7 +9,7 @@ from dashboard.bank_accounts.operations.components.custom_calendar import Custom
 class CtkDateEntry(ctk.CTkFrame):
     """Widget simulant une entrée de date avec un bouton calendrier intégré."""
 
-    def __init__(self, master: ctk.CTkFrame, initial_date=None) -> None:
+    def __init__(self, master: ctk.CTkFrame, initial_date: str = None) -> None:
         super().__init__(master, fg_color="transparent")
 
         self.__date_var = ctk.StringVar(value=initial_date or datetime.now().strftime("%Y-%m-%d"))
