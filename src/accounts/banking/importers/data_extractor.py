@@ -129,32 +129,20 @@ class DataExtractor:
                 on_bad_lines="skip",
                 decimal=",",
             )
-
-            # Nettoyage HTML
-            df = df.map(lambda x: html.unescape(str(x)) if isinstance(x, str) else x)
-
-            # Filtrage des lignes de transactions uniquement
-            df = df[df[0].str.contains(r"\d{2}/\d{2}/\d{4}", na=False)].copy()
-
+            df = df.iloc[1:]
             df = df.iloc[:, 0:5]
-            df.columns = [
-                "operation_date",
-                "libelle_court",
-                "type_operation",
-                "libelle_operation",
-                "montant",
-            ]
-
-            df["montant"] = pd.to_numeric(df["montant"], errors="coerce")
-            df = df.dropna(subset=["montant"])
+            df.columns = ["operation_date", "short_label", "operation_type", "label", "amount"]
+            df["amount"] = (
+                df["amount"].str.replace(",", ".", regex=False).str.replace(r"\s+", "", regex=True).astype(float)
+            )
             df["operation_date"] = pd.to_datetime(df["operation_date"], dayfirst=True)
-
             self.__apply_business_rules(df)
+            df["operation_date"] = df["operation_date"].dt.strftime("%Y-%m-%d")
+
             return df
 
         except Exception as e:
             messagebox.showerror("Erreur CSV", f"Erreur sur le fichier {file_path} : {str(e)}")
-            raise
             return None
 
     def __extract_bnp_paribas(self, raw_rows: list) -> pd.DataFrame:
