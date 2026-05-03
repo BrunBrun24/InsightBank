@@ -18,6 +18,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         operation: dict,
         on_save_callback: callable,
     ) -> None:
+        print(operation)
         super().__init__(parent)
         self.title("Modifier l'opération")
         self.transient(parent)
