@@ -280,7 +280,7 @@ class Categorizer:
         # Récupère la dernière opération traitée (LIFO)
         last_operation = self.__history.pop()
 
-        # Suppression en base de données via l'ID de la transaction
+        # Suppression en base de données via l'ID de l'opération
         self.__db.delete_operation(self.__bank_account_id, last_operation[0])
 
         # Réinsertion en première position de la liste de travail

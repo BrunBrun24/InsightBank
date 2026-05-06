@@ -12,14 +12,12 @@ class Home:
 
         self.__controller.destroy_widgets()
 
-        # Header
         header_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=20)
 
         title_label = ctk.CTkLabel(header_frame, text="Accueil", font=("Arial", 60, "bold"))
         title_label.pack(expand=True)
 
-        # Conteneur principal agrandi
         container = ctk.CTkFrame(self.__master, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=40, pady=40)
 
@@ -62,7 +60,7 @@ class Home:
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["hover_color"],
                 "icon_path": "src/static/img/information.png",
-                "cmd": lambda: self.__controller.show_home(),  # TODO
+                "cmd": lambda: self.__controller.show_information(),
             },
         ]
 

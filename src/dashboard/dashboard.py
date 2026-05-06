@@ -10,6 +10,7 @@ from dashboard.bank_accounts.excel_report.excel_report import ExcelReport
 from dashboard.bank_accounts.operations.operations import Operations
 from dashboard.configuration.configuration import Configuration
 from dashboard.home.home import Home
+from dashboard.information.information import Information
 
 
 class Dashboard(ctk.CTk):
@@ -31,6 +32,7 @@ class Dashboard(ctk.CTk):
         self.__operation_module = Operations(self.__main_view, self)
         self.__chart = Chart(self.__main_view, self)
         self.__excel_report = ExcelReport(self.__main_view, self)
+        self.__information = Information(self.__main_view, self)
 
         self.__setup_navigation_frame()
         self.show_home()
@@ -67,6 +69,9 @@ class Dashboard(ctk.CTk):
 
     def show_excel_report(self, bank_account_row: pd.Series) -> None:
         self.__excel_report.display(bank_account_row)
+
+    def show_information(self) -> None:
+        self.__information.display()
 
     def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
         """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""
@@ -242,7 +247,7 @@ class Dashboard(ctk.CTk):
             height=40,
             fg_color="transparent",
             hover_color=("gray70", "gray30"),
-            command=self.show_home,  # TODO
+            command=self.show_information,
         ).grid(row=6, column=0, padx=10, pady=10)
 
     def center_window(self, window: ctk.CTkInputDialog) -> None:

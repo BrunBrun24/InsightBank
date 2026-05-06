@@ -59,7 +59,7 @@ class Configuration:
             0,
             1,
             "Architecture",
-            "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. Cette flexibilité vous permet de classer précisément chaque transaction, qu'il s'agisse de revenus récurrents ou de dépenses imprévues, pour une analyse financière détaillée.",
+            "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. Cette flexibilité vous permet de classer précisément chaque opération, qu'il s'agisse de revenus récurrents ou de dépenses imprévues, pour une analyse financière détaillée.",
             "src/static/img/file.png",
             "Gérer",
             command=self.__manage_config_categorization,
