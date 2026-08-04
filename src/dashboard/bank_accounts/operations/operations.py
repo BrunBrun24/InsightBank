@@ -150,9 +150,8 @@ class Operations:
 
                     # On crée le texte avec la petite flèche de tri
                     display_text = col_name
-                    if col_name in col_map:
-                        if self.__sort_column == col_map[col_name]:
-                            display_text += " ▲" if self.__sort_ascending else " ▼"
+                    if col_name in col_map and self.__sort_column == col_map[col_name]:
+                        display_text += " ▲" if self.__sort_ascending else " ▼"
 
                     # On crée un Label
                     lbl = ctk.CTkLabel(
@@ -360,16 +359,63 @@ class Operations:
         )
 
     def __handle_import_process(self, bank_account_row: pd.Series) -> None:
-        """Lance l'extraction et injecte le nom du compte sélectionné dans les données."""
+        """Lance l'extraction, gère les doublons avec confirmation utilisateur et injecte les données."""
 
         try:
             extractor = DataExtractor()
             df = extractor.run_extraction(bank_account_row["id"])
 
-            if df is None:
+            if df is None or df.empty:
                 return
 
             df["bank_account_id"] = bank_account_row["id"]
+
+            # Récupération des opérations existantes pour ce compte
+            existing_ops = self.__db.get_operations_by_bank_account(bank_account_row["id"])
+
+            if not existing_ops.empty:
+                # Création des clés uniques de comparaison
+                existing_ops["match_key"] = (
+                    existing_ops["operation_date"].astype(str)
+                    + "_"
+                    + existing_ops["label"].astype(str).str.strip()
+                    + "_"
+                    + existing_ops["amount"].astype(float).round(2).astype(str)
+                )
+
+                df["match_key"] = (
+                    df["operation_date"].astype(str)
+                    + "_"
+                    + df["label"].astype(str).str.strip()
+                    + "_"
+                    + df["amount"].astype(float).round(2).astype(str)
+                )
+
+                # Identification des doublons
+                duplicates_mask = df["match_key"].isin(existing_ops["match_key"])
+                nb_duplicates = duplicates_mask.sum()
+
+                if nb_duplicates > 0:
+                    # Demande de confirmation à l'utilisateur
+                    import_duplicates = messagebox.askyesno(
+                        "Doublons détectés",
+                        f"{nb_duplicates} opération(s) importée(s) semble(nt) déjà exister dans la base de données.\n\n"
+                        "Souhaitez-vous quand même les importer ?",
+                    )
+
+                    # Si l'utilisateur choisit Non (False), on retire les doublons du DataFrame
+                    if not import_duplicates:
+                        df = df[~duplicates_mask]
+
+                # Nettoyage de la colonne temporaire de clé
+                df = df.drop(columns=["match_key"])
+
+            # Si aucune donnée ne reste à insérer
+            if df.empty:
+                messagebox.showinfo("Importation", "Aucune nouvelle opération n'a été ajoutée.")
+                return
+
+            # Insertion des opérations validées
             self.__db.add_operations(df)
 
             # Catégorise les différentes opérations
