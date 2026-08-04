@@ -504,83 +504,127 @@ class FinancialChart:
                     return res;
                 }}
 
-                function buildSeries(){{
-                    const y = parseInt(document.getElementById("year_{graph_id}").value)||years[years.length-1];
-                    let series=[];
-                    let totals;
+                function updateDynamicMetrics(chart) {{
+                    // 1. Récupération du nombre de points (ex: 12 mois ou N années)
+                    const columnSeries = chart.series.filter(s => s.options.type === "column" && s.visible);
+                    if (columnSeries.length === 0) return;
 
-                    if(gran==="total"){{
-                        totals = aggregate(y);
+                    const numPoints = columnSeries[0].data.length;
+                    let visibleTotals = Array(numPoints).fill(0);
+
+                    // 2. Somme des données uniquement pour les séries visibles
+                    columnSeries.forEach(s => {{
+                        s.data.forEach((pt, i) => {{
+                            visibleTotals[i] += pt.y || 0;
+                        }});
+                    }});
+
+                    visibleTotals = visibleTotals.map(round);
+
+                    // 3. Calcul de la nouvelle moyenne
+                    const avg = visibleTotals.reduce((a, b) => a + b, 0) / (visibleTotals.length || 1);
+                    const avgSeries = chart.series.find(s => s.name.startsWith("Moyenne"));
+                    
+                    if (avgSeries) {{
+                        avgSeries.setData(Array(numPoints).fill(round(avg)), false);
+                    }}
+
+                    // 4. Calcul de la nouvelle variation % (si mode année)
+                    const pctSeries = chart.series.find(s => s.name === "Variation %");
+                    if (pctSeries) {{
+                        pctSeries.setData(pct(visibleTotals), false);
+                    }}
+
+                    chart.redraw();
+                }}
+
+                function buildSeries(){{
+                    const y = parseInt(document.getElementById("year_{graph_id}").value) || years[years.length - 1];
+                    let series = [];
+
+                    // Événement d'écoute sur la visibilité (clic légende)
+                    const legendEvents = {{
+                        legendItemClick: function () {{
+                            const chart = this.chart;
+                            // setTimeout pour attendre que l'état de visibilité de la série soit mis à jour par Highcharts
+                            setTimeout(() => updateDynamicMetrics(chart), 10);
+                        }}
+                    }};
+
+                    if(gran === "total"){{
+                        let totals = aggregate(y);
                         series.push({{
-                            name:type,
-                            data:totals,
-                            type:"column",
-                            color:getColor()
+                            name: type,
+                            data: totals,
+                            type: "column",
+                            color: getColor(),
+                            events: legendEvents
                         }});
                     }}
 
-                    if(gran==="cat"){{
-                        Object.entries(DATA[type]).forEach(([cat,subs])=>{{
-                            let data = mode==="year"
-                                ? years.map(y=>Object.values(subs).reduce((s,sub)=>s+(sub[y]?.reduce((a,b)=>a+b,0)||0),0))
-                                : Object.values(subs).reduce((arr,sub)=>arr.map((v,i)=>v+(sub[y]?.[i]||0)),Array(12).fill(0));
+                    if(gran === "cat"){{
+                        Object.entries(DATA[type]).forEach(([cat, subs]) => {{
+                            let data = mode === "year"
+                                ? years.map(y => Object.values(subs).reduce((s, sub) => s + (sub[y]?.reduce((a, b) => a + b, 0) || 0), 0))
+                                : Object.values(subs).reduce((arr, sub) => arr.map((v, i) => v + (sub[y]?.[i] || 0)), Array(12).fill(0));
 
                             series.push({{
-                                name:cat,
-                                data:data.map(round),
-                                type:"column",
-                                stack:"t",
-                                color:getRandomColor(series.length)
+                                name: cat,
+                                data: data.map(round),
+                                type: "column",
+                                stack: "t",
+                                color: getRandomColor(series.length),
+                                events: legendEvents
                             }});
                         }});
                     }}
 
-                    if(gran==="sub"){{
-                        Object.entries(DATA[type]).forEach(([cat,subs])=>{{
-                            Object.entries(subs).forEach(([sub,dataObj])=>{{
-                                let data = mode==="year"
-                                    ? years.map(y=>dataObj[y]?.reduce((a,b)=>a+b,0)||0)
-                                    : dataObj[y]||Array(12).fill(0);
+                    if(gran === "sub"){{
+                        Object.entries(DATA[type]).forEach(([cat, subs]) => {{
+                            Object.entries(subs).forEach(([sub, dataObj]) => {{
+                                let data = mode === "year"
+                                    ? years.map(y => dataObj[y]?.reduce((a, b) => a + b, 0) || 0)
+                                    : dataObj[y] || Array(12).fill(0);
 
                                 series.push({{
-                                    name:sub,
-                                    data:data.map(round),
-                                    type:"column",
-                                    stack:"t",
-                                    color:getRandomColor(series.length)
+                                    name: sub,
+                                    data: data.map(round),
+                                    type: "column",
+                                    stack: "t",
+                                    color: getRandomColor(series.length),
+                                    events: legendEvents
                                 }});
                             }});
                         }});
                     }}
 
-                    totals = aggregate(y);
-                    const avg = totals.reduce((a,b)=>a+b,0)/totals.length;
+                    // Initialisation des séries Moyenne et Variation
+                    const totals = aggregate(y);
+                    const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
 
                     series.push({{
-                        name:"Moyenne",
-                        data:Array(totals.length).fill(round(avg)),
-                        type:"line",
-                        dashStyle:"Dot",
-                        color:"#FF0000",
-                        marker:{{enabled:false}},
-                        showInLegend:false
+                        name: "Moyenne " + type,
+                        data: Array(totals.length).fill(round(avg)),
+                        type: "line",
+                        dashStyle: "Dot",
+                        color: "#FF0000",
+                        marker: {{enabled: false}},
+                        showInLegend: false
                     }});
 
-                    if(mode==="year"){{
+                    if(mode === "year"){{
                         series.push({{
-                            name:"Variation %",
-                            data:pct(totals),
-                            type:"line",
-                            yAxis:1,
-                            showInLegend:false,
-                            lineWidth:2,
-                            marker:{{enabled:true,symbol:'circle',radius:4}},
-                            zones:[{{
-                                value:0,
-                                color:"#FF0000"
-                            }}, {{
-                                color:"#00E272"
-                            }}]
+                            name: "Variation %",
+                            data: pct(totals),
+                            type: "line",
+                            yAxis: 1,
+                            showInLegend: false,
+                            lineWidth: 2,
+                            marker: {{enabled: true, symbol: 'circle', radius: 4}},
+                            zones: [
+                                {{value: 0, color: "#FF0000"}},
+                                {{color: "#00E272"}}
+                            ]
                         }});
                     }}
 
