@@ -3,8 +3,6 @@ from PIL import Image
 
 
 class Information:
-    """Page d'aide utilisant des icônes PIL à la place des emojis."""
-
     def __init__(self, master: ctk.CTkFrame, controller) -> None:
         self.__master = master
         self.__controller = controller

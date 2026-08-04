@@ -1,6 +1,7 @@
 import os
 import shutil
 import sqlite3
+from typing import Literal
 
 import pandas as pd
 
@@ -39,12 +40,12 @@ class BankingDB(DatabaseBase):
 
         if "category" in operations_df.columns:
             cat_name = operations_df["category"].iloc[0]
-            cat_id = self.__get_or_create_category_id(cat_name)
+            cat_id = self._get_or_create_category_id(cat_name)
             operations_df["category_id"] = cat_id
 
             if "sub_category" in operations_df.columns:
                 sub_name = operations_df["sub_category"].iloc[0]
-                sub_id = self.__get_or_create_sub_category_id(cat_id, sub_name)
+                sub_id = self._get_or_create_sub_category_id(cat_id, sub_name)
                 operations_df["sub_category_id"] = sub_id
 
             cols_to_drop = ["category", "sub_category", "id"]
@@ -130,8 +131,8 @@ class BankingDB(DatabaseBase):
             cursor = conn.cursor()
 
             # Récupération ou création des identifiants techniques (IDs)
-            category_id = self.__get_or_create_category_id(category_name)
-            sub_category_id = self.__get_or_create_sub_category_id(category_id, sub_category_name)
+            category_id = self._get_or_create_category_id(category_name)
+            sub_category_id = self._get_or_create_sub_category_id(category_id, sub_category_name)
 
             cursor.execute(
                 """
@@ -280,10 +281,11 @@ class BankingDB(DatabaseBase):
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
 
-    def get_unprocessed_raw_operations(self, bank_account_id: int) -> list:
+    def get_unprocessed_raw_operations(self, bank_account_id: int) -> list[dict[str:str]]:
         """Récupère les transactions brutes non traitées"""
 
         with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             cursor.execute(
@@ -296,7 +298,7 @@ class BankingDB(DatabaseBase):
             )
 
             rows = cursor.fetchall()
-            return rows
+            return [dict(row) for row in rows]
 
     def get_categorized_operations_df(self, bank_account_id: int) -> pd.DataFrame:
         """Récupère les opérations catégorisées."""
@@ -362,12 +364,48 @@ class BankingDB(DatabaseBase):
 
         return years_dict
 
-    def __get_or_create_category_id(self, category_name: str, flow_type: str = "income", cursor=None) -> int:
+    def get_category_by_exact_label(
+        self,
+        bank_account_id: int,
+        label: str,
+        short_label: str,
+        operation_type: str,
+    ) -> tuple[str | None, str | None]:
+        """Recherche une opération strictement identique sur le libellé, le libellé court et le type d'opération"""
+
+        query = """
+            SELECT 
+                c.name AS category_name,
+                sc.name AS sub_category_name
+            FROM raw_data r
+            JOIN categories c ON r.category_id = c.id
+            JOIN sub_categories sc ON r.sub_category_id = sc.id
+            WHERE r.bank_account_id = ? 
+              AND r.label = ? 
+              AND r.short_label = ? 
+              AND r.operation_type = ? 
+              AND r.category_id IS NOT NULL
+            LIMIT 1
+        """
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (bank_account_id, label, short_label, operation_type))
+            row = cursor.fetchone()
+
+            if row:
+                return row[0], row[1]
+
+            return None, None
+
+    def _get_or_create_category_id(
+        self, category_name: str, flow_type: Literal["income", "expense"] = "income", cursor=None
+    ) -> int:
         """Récupère l'ID d'une catégorie ou la crée si elle n'existe pas pour ce compte."""
 
         if cursor is None:
             with self._get_connection() as conn:
-                return self.__get_or_create_category_id(category_name, flow_type, conn.cursor())
+                return self._get_or_create_category_id(category_name, flow_type, conn.cursor())
 
         # Tentative de récupération
         cursor.execute(
@@ -389,12 +427,12 @@ class BankingDB(DatabaseBase):
         )
         return cursor.lastrowid
 
-    def __get_or_create_sub_category_id(self, category_id: int, sub_category_name: str, cursor=None) -> int:
+    def _get_or_create_sub_category_id(self, category_id: int, sub_category_name: str, cursor=None) -> int:
         """Récupère l'ID d'une sous-catégorie ou la crée pour une catégorie parente donnée."""
 
         if cursor is None:
             with self._get_connection() as conn:
-                return self.__get_or_create_sub_category_id(category_id, sub_category_name, cursor=conn.cursor())
+                return self._get_or_create_sub_category_id(category_id, sub_category_name, cursor=conn.cursor())
 
         cursor.execute(
             """
@@ -518,10 +556,10 @@ class BankingDB(DatabaseBase):
 
                 # 2. Insertion / Mise à jour
                 for cat_name, sub_list in categories_map.items():
-                    cat_id = self.__get_or_create_category_id(cat_name, flow_type, cursor)
+                    cat_id = self._get_or_create_category_id(cat_name, flow_type, cursor)
 
                     for sub_name in sub_list:
-                        self.__get_or_create_sub_category_id(cat_id, sub_name, cursor)
+                        self._get_or_create_sub_category_id(cat_id, sub_name, cursor)
 
     @staticmethod  # TODO faire une grosse BDD avec tous les comptes
     def merge_account_databases(source_db_path: str, target_db_path: str, output_path: str) -> None:

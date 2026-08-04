@@ -8,6 +8,8 @@ from dashboard.bank_accounts.bank_accounts import BankAccounts
 from dashboard.bank_accounts.chart.chart import Chart
 from dashboard.bank_accounts.excel_report.excel_report import ExcelReport
 from dashboard.bank_accounts.operations.operations import Operations
+from dashboard.configuration.automatisation_cat_sub_cat.automatisation_cat_sub_cat import AutomatisationCatSubCat
+from dashboard.configuration.categories_sub_categories.categories_sub_categories import CategoriesSubCategories
 from dashboard.configuration.configuration import Configuration
 from dashboard.home.home import Home
 from dashboard.information.information import Information
@@ -26,13 +28,15 @@ class Dashboard(ctk.CTk):
 
         self.__setup_interface()
 
-        self.__configuration_module = Configuration(self.__main_view, self)
         self.__home_module = Home(self.__main_view, self)
+        self.__configuration_module = Configuration(self.__main_view, self)
         self.__account_module = BankAccounts(self.__main_view, self)
         self.__operation_module = Operations(self.__main_view, self)
         self.__chart = Chart(self.__main_view, self)
         self.__excel_report = ExcelReport(self.__main_view, self)
         self.__information = Information(self.__main_view, self)
+        self.__categories_sub_categories = CategoriesSubCategories(self.__main_view, self)
+        self.__automatisation_cat_sub_cat = AutomatisationCatSubCat(self.__main_view, self)
 
         self.__setup_navigation_frame()
         self.show_home()
@@ -55,6 +59,9 @@ class Dashboard(ctk.CTk):
     def show_configuration(self) -> None:
         self.__configuration_module.display()
 
+    def show_manage_config_categorization(self) -> None:
+        self.__configuration_module.display()
+
     def show_bank_accounts(self) -> None:
         self.__account_module.show_bank_accounts()
 
@@ -72,6 +79,12 @@ class Dashboard(ctk.CTk):
 
     def show_information(self) -> None:
         self.__information.display()
+
+    def show_categories_sub_categories(self) -> None:
+        self.__categories_sub_categories.display()
+
+    def show_automatisation_cat_sub_cat(self) -> None:
+        self.__automatisation_cat_sub_cat.display()
 
     def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
         """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""
@@ -146,7 +159,7 @@ class Dashboard(ctk.CTk):
     def __setup_interface(self) -> None:
         """Création de l'interface graphique et centrage"""
 
-        self.title("Financial Data Visualizer - Dashboard")
+        self.title("InsightBank - Dashboard")
         self.minsize(1000, 800)
 
         # Lancement immédiat en mode maximisé

@@ -1,5 +1,4 @@
 import unicodedata
-from typing import Dict, List
 
 import customtkinter as ctk
 
@@ -35,7 +34,9 @@ class Categorizer:
         self.__db = db
         self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
+        self.__smart_categorization_enabled = config["smart_categorization_enabled"]
         self.__theme = config["theme"]
+        self.__custom_rules = config["custom_rules"]
         self.__operations = self.__db.get_unprocessed_raw_operations(self.__bank_account_id)
         self.__incomes_categories_and_sub_categories = config["database"]["incomes"]["categories_subcategories"]
         self.__expenses_categories_and_sub_categories = config["database"]["expenses"]["categories_subcategories"]
@@ -108,10 +109,19 @@ class Categorizer:
         row = self.__operations[0]
         self.current_row = row
 
-        # Affichage du texte
-        self.__display_label.configure(text=row[4] + "\n\n" + f"{row[1]}   =>   {row[5]}€")
+        # Traite les cas spéciaux
+        afficher_button = self.__process_special_cases(row)
 
-        if row[5] >= 0:
+        if not afficher_button:
+            # L'opération a déjà été catégorisée automatiquement
+            self.__operations.pop(0)
+            self.__update_display()
+            return
+
+        # Affichage du texte
+        self.__display_label.configure(text=row["label"] + "\n\n" + f"{row['operation_date']}   =>   {row['amount']}€")
+
+        if row["amount"] >= 0:
             # On récupère le dictionnaire des revenus
             source_dict = self.__incomes_categories_and_sub_categories
         else:
@@ -126,7 +136,7 @@ class Categorizer:
 
         self.__create_buttons(filtered_buttons)
 
-    def __create_buttons(self, filtered_buttons: Dict[str, List[str]]) -> None:
+    def __create_buttons(self, filtered_buttons: dict[str, list[str]]) -> None:
         """Crée dynamiquement des boutons Tkinter pour les catégories et sous-catégories."""
 
         # Supprimer tous les widgets sauf le label d'affichage
@@ -185,7 +195,7 @@ class Categorizer:
         Sinon, l'opération est directement traitée.
         """
 
-        if self.current_row[5] >= 0:
+        if self.current_row["amount"] >= 0:
             sub_categories = self.__incomes_categories_and_sub_categories[category_name]
         else:
             sub_categories = self.__expenses_categories_and_sub_categories[category_name]
@@ -243,7 +253,6 @@ class Categorizer:
             next_button.grid(row=row_index, column=self.__buttons_per_row - 1, pady=10, sticky="e")
 
         else:
-            # Si aucune sous-catégorie n'existe, on traite directement l'opération
             raise ValueError(f"Erreur : Il n'y a pas de sous-catégories pour la catégorie '{category_name}'.")
 
     def __skip_entry(self) -> None:
@@ -303,7 +312,7 @@ class Categorizer:
 
         # Conversion des noms des boutons en IDs techniques
         self.__db.update_operation_according_classification(
-            self.__operations[0][0],
+            self.__operations[0]["id"],
             main_categorie,
             sub_categorie,
         )
@@ -317,3 +326,99 @@ class Categorizer:
 
         normalized = unicodedata.normalize("NFD", text)
         return "".join(c for c in normalized if unicodedata.category(c) != "Mn").lower()
+
+    def __process_special_cases(self, row: dict) -> bool:
+        """
+        Traite automatiquement certains cas particuliers d'opérations bancaires
+        et les catégorise selon des règles prédéfinies.
+
+        Returns:
+        - bool : True si l'opération nécessite une catégorisation manuelle (afficher les boutons),
+                False si l'opération a été catégorisée automatiquement (ne pas afficher les boutons).
+        """
+
+        id_op = row["id"]
+        short_label = row["short_label"]
+        label = row["label"]
+        amount = row["amount"]
+        operation_type = row["operation_type"]
+
+        # Recherche dans l'historique des opérations
+        if self.__smart_categorization_enabled:
+            target_cat, target_subcat = self.__db.get_category_by_exact_label(
+                self.__bank_account_id, label, short_label, operation_type
+            )
+            if target_cat is not None:
+                self.__db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                return False
+
+        # Regarde si une règle existe
+        for custom_rule in self.__custom_rules:
+            # Récupération des conditions (compatible nouveau format 'conditions' et ancien format)
+            conditions = custom_rule.get("conditions", [])
+            if not conditions and "field" in custom_rule:
+                conditions = [custom_rule]
+
+            rule_matched = True
+
+            for cond in conditions:
+                field = cond.get("field")
+                operator = cond.get("operator")
+                values = cond.get("values", [])
+
+                # Extraction de la valeur réelle de l'opération selon le champ
+                if field == "Libellé":
+                    target_val = label
+                elif field == "Libellé court":
+                    target_val = short_label
+                elif field == "Type d'opération":
+                    target_val = operation_type
+                elif field == "Montant":
+                    target_val = amount
+                else:
+                    target_val = label
+
+                condition_matched = False
+
+                # Évaluation selon le type de champ
+                if field == "Montant":
+                    try:
+                        val_num = float(target_val)
+                        # Pour le montant, on compare par rapport à la première valeur saisie
+                        target_num = float(str(values[0]).replace(",", ".")) if values else 0.0
+
+                        if (
+                            (operator == "égal" and val_num == target_num)
+                            or (operator == "plus petit que" and val_num < target_num)
+                            or (operator == "plus grand que" and val_num > target_num)
+                        ):
+                            condition_matched = True
+                    except (ValueError, TypeError, IndexError):
+                        condition_matched = False
+                else:
+                    target_str = str(target_val).lower()
+                    # Évaluation textuelle : OU logique entre les différentes valeurs d'une même condition
+                    for val in values:
+                        val_str = str(val).lower()
+                        if (
+                            (operator == "contient" and val_str in target_str)
+                            or (operator == "commence par" and target_str.startswith(val_str))
+                            or (operator == "termine par" and target_str.endswith(val_str))
+                            or (operator == "est exactement" and target_str == val_str)
+                        ):
+                            condition_matched = True
+                            break
+
+                # Si une seule condition échoue, la règle complète n'est pas validée (ET logique)
+                if not condition_matched:
+                    rule_matched = False
+                    break
+
+            # Si toutes les conditions d'une règle sont respectées, on catégorise immédiatement
+            if rule_matched and conditions:
+                target_cat = custom_rule.get("target_category", "")
+                target_subcat = custom_rule.get("target_subcategory", "")
+                self.__db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                return False
+
+        return True

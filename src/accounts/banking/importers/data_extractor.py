@@ -1,4 +1,3 @@
-import html
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox
 

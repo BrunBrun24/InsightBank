@@ -11,6 +11,7 @@ def load_config() -> dict:
             "bank": "Non défini",
             "extract_file": "",
             "destination_path": "exports",
+            "smart_categorization_enabled": "true",
             "database": {
                 "database_path": "data/bank_accounts.db",
                 "incomes": {
@@ -69,6 +70,7 @@ def load_config() -> dict:
                     },
                 },
             },
+            "custom_rules": [],
             "theme": {
                 "red": {"fg_color": "#F04949", "hover_color": "#a71d2a"},
                 "green": {"fg_color": "#29B68E", "hover_color": "#1A9774"},
