@@ -148,7 +148,7 @@ class BankingDB(DatabaseBase):
             )
 
     def get_operations_by_bank_account(self, bank_account_id: int) -> pd.DataFrame:
-        """Retourne toutes les transactions liées à compte bancaire"""
+        """Retourne toutes les transactions liées à un compte bancaire."""
 
         query = """
             SELECT 
@@ -156,13 +156,13 @@ class BankingDB(DatabaseBase):
                 r.label,
                 r.short_label,
                 r.operation_type,
-                c.name AS category,
-                s.name AS sub_category,
+                COALESCE(c.name, 'Non catégorisé') AS category,
+                COALESCE(s.name, 'Non catégorisé') AS sub_category,
                 r.amount,
                 r.id AS id
             FROM raw_data r
-            JOIN categories c ON r.category_id = c.id
-            JOIN sub_categories s ON r.sub_category_id = s.id
+            LEFT JOIN categories c ON r.category_id = c.id
+            LEFT JOIN sub_categories s ON r.sub_category_id = s.id
             WHERE r.bank_account_id = ?
             ORDER BY r.operation_date DESC
         """
