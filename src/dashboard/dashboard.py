@@ -3,8 +3,8 @@ import pandas as pd
 from PIL import Image
 
 from accounts.banking.database.banking_db import BankingDB
+from accounts.stock.database.stock_db import StockDB
 from config import load_config
-from dashboard.bank_accounts.bank_accounts import BankAccounts
 from dashboard.bank_accounts.chart.chart import Chart
 from dashboard.bank_accounts.excel_report.excel_report import ExcelReport
 from dashboard.bank_accounts.operations.operations import Operations
@@ -13,6 +13,8 @@ from dashboard.configuration.categories_sub_categories.categories_sub_categories
 from dashboard.configuration.configuration import Configuration
 from dashboard.home.home import Home
 from dashboard.information.information import Information
+from dashboard.portfolio.transactions.transactions import Transactions
+from dashboard.shared.account import Account
 
 
 class Dashboard(ctk.CTk):
@@ -23,15 +25,19 @@ class Dashboard(ctk.CTk):
 
         self.__config = load_config()
         self.__theme = self.__config["theme"]
-        self.__db_path = self.__config["database"]["database_path"]
-        self.__db = BankingDB(self.__db_path)
+        self.__db_banking_path = self.__config["database"]["db_banking_path"]
+        self.__db_stock_path = self.__config["database"]["db_stock_path"]
+        self.__db_banking = BankingDB(self.__db_banking_path)
+        self.__db_stock = StockDB(self.__db_stock_path)
 
         self.__setup_interface()
 
+        self.__bank_account_module = Account(self.__main_view, self, mode="banking")
+        self.__stock_account_module = Account(self.__main_view, self, mode="stock")
         self.__home_module = Home(self.__main_view, self)
         self.__configuration_module = Configuration(self.__main_view, self)
-        self.__account_module = BankAccounts(self.__main_view, self)
-        self.__operation_module = Operations(self.__main_view, self)
+        self.__banking_operations_module = Operations(self.__main_view, self)
+        self.__stock_operations_module = Transactions(self.__main_view, self)
         self.__chart = Chart(self.__main_view, self)
         self.__excel_report = ExcelReport(self.__main_view, self)
         self.__information = Information(self.__main_view, self)
@@ -41,11 +47,14 @@ class Dashboard(ctk.CTk):
         self.__setup_navigation_frame()
         self.show_home()
 
-    def get_db(self) -> BankingDB:
-        return self.__db
+    def get_db_banking(self) -> BankingDB:
+        return self.__db_banking
 
-    def set_db(self, db: BankingDB) -> None:
-        self.__db = db
+    def set_db_banking(self, db: BankingDB) -> None:
+        self.__db_banking = db
+
+    def get_db_stock(self) -> StockDB:
+        return self.__db_stock
 
     def get_config(self) -> dict:
         return self.__config
@@ -63,13 +72,22 @@ class Dashboard(ctk.CTk):
         self.__configuration_module.display()
 
     def show_bank_accounts(self) -> None:
-        self.__account_module.show_bank_accounts()
+        self.__bank_account_module.display()
 
-    def show_account_menu(self, bank_account_row: pd.Series) -> None:
-        self.__account_module.show_account_menu(bank_account_row)
+    def show_stock_portfolios(self) -> None:
+        self.__stock_account_module.display()
 
-    def show_operations(self, bank_account_row: pd.Series) -> None:
-        self.__operation_module.display(bank_account_row)
+    def show_bank_account_menu(self, bank_account_row: pd.Series) -> None:
+        self.__bank_account_module.show_account_menu(bank_account_row)
+
+    def show_stock_account_menu(self, portfolio_row: pd.Series) -> None:
+        self.__stock_account_module.show_account_menu(portfolio_row)
+
+    def show_bank_operations(self, bank_account_row: pd.Series) -> None:
+        self.__banking_operations_module.display(bank_account_row)
+
+    def show_stock_transactions(self, portfolio_row: pd.Series) -> None:
+        self.__stock_operations_module.display(portfolio_row)
 
     def show_charts(self, bank_account_row: pd.Series) -> None:
         self.__chart.display(bank_account_row)
@@ -163,7 +181,7 @@ class Dashboard(ctk.CTk):
         self.minsize(1000, 800)
 
         # Lancement immédiat en mode maximisé
-        self.after(10, lambda: self.wm_state("zoomed"))
+        self.after(20, lambda: self.wm_state("zoomed"))
 
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
@@ -184,12 +202,14 @@ class Dashboard(ctk.CTk):
         self.__nav_frame.grid_rowconfigure(4, weight=1)
 
         icon_size = (28, 28)
-        home_icon = ctk.CTkImage(light_image=Image.open("src/static/img/home.png"), size=icon_size)
-        bank_account_icon = ctk.CTkImage(light_image=Image.open("src/static/img/bank_account.png"), size=icon_size)
-        stock_icon = ctk.CTkImage(light_image=Image.open("src/static/img/stock.png"), size=icon_size)
-        heritage_icon = ctk.CTkImage(light_image=Image.open("src/static/img/heritage.png"), size=icon_size)
-        edit_icon = ctk.CTkImage(light_image=Image.open("src/static/img/edit.png"), size=icon_size)
-        information_icon = ctk.CTkImage(light_image=Image.open("src/static/img/information.png"), size=icon_size)
+        home_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/home.png"), size=icon_size)
+        bank_account_icon = ctk.CTkImage(
+            light_image=Image.open("src/static/img/icons/bank_account.png"), size=icon_size
+        )
+        stock_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/stock.png"), size=icon_size)
+        heritage_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/heritage.png"), size=icon_size)
+        edit_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/edit.png"), size=icon_size)
+        information_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/information.png"), size=icon_size)
 
         # Bouton home
         ctk.CTkButton(
@@ -224,7 +244,7 @@ class Dashboard(ctk.CTk):
             height=40,
             fg_color="transparent",
             hover_color=("gray70", "gray30"),
-            command=self.show_home,  # TODO
+            command=self.show_stock_portfolios,
         ).grid(row=2, column=0, padx=10, pady=(10, 20))
 
         # Bouton heritage
@@ -262,15 +282,6 @@ class Dashboard(ctk.CTk):
             hover_color=("gray70", "gray30"),
             command=self.show_information,
         ).grid(row=6, column=0, padx=10, pady=10)
-
-    def center_window(self, window: ctk.CTkInputDialog) -> None:
-        """Centre une fenêtre au milieu de l'écran"""
-
-        # Calcul des coordonnées pour centrer par rapport à l'application (self)
-        x = self.winfo_x() + (self.winfo_width() // 2) - (window.winfo_width() // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (window.winfo_height() // 2)
-
-        window.geometry(f"+{x}+{y}")
 
     def destroy_widgets(self) -> None:
         """

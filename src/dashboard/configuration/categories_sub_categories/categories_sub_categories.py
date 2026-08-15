@@ -12,7 +12,7 @@ class CategoriesSubCategories:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__db_path = self.__config["database"]["database_path"]
+        self.__db_banking_path = self.__config["database"]["db_banking_path"]
 
     def display(self) -> None:
         """Affiche la page de gestion des catégories et sous-catégories."""
@@ -26,6 +26,17 @@ class CategoriesSubCategories:
         # Header
         header_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=10)
+
+        # Bouton de retour placé en absolu pour ne pas gêner le centrage du label
+        back_btn = ctk.CTkButton(
+            header_frame,
+            text="←",
+            fg_color=self.__theme["blue_01"]["fg_color"],
+            hover_color=self.__theme["blue_01"]["hover_color"],
+            width=40,
+            command=self.__controller.show_configuration,
+        )
+        back_btn.place(x=0, y=15)
 
         ctk.CTkLabel(header_frame, text="Configuration des Catégories", font=("Arial", 30, "bold")).pack(pady=(5, 10))
 
@@ -340,11 +351,10 @@ class CategoriesSubCategories:
 
             save_config(full_config)
             self.__config = load_config()
-            self.__controller.set_db(BankingDB(self.__db_path))
+            self.__controller.set_db_banking(BankingDB(self.__db_banking_path))
 
             messagebox.showinfo("Succès", "Toutes les catégories ont été mises à jour avec succès !")
             self.__controller.show_home()
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de l'écriture du fichier : {e}")
-            raise

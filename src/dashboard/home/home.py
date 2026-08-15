@@ -27,7 +27,7 @@ class Home:
                 "desc": "Gérer vos différents\ncomptes.",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
-                "icon_path": "src/static/img/bank_account.png",
+                "icon_path": "src/static/img/icons/bank_account.png",
                 "cmd": lambda: self.__controller.show_bank_accounts(),
             },
             {
@@ -35,15 +35,15 @@ class Home:
                 "desc": "Suivre vos placements\net investissements.",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
-                "icon_path": "src/static/img/stock.png",
-                "cmd": lambda: self.__controller.show_home(),  # TODO
+                "icon_path": "src/static/img/icons/stock.png",
+                "cmd": lambda: self.__controller.show_stock_portfolios(),
             },
             {
                 "name": "Patrimoine",
                 "desc": "Visualisez l'évolution de votre\npatrimoine.",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
-                "icon_path": "src/static/img/heritage.png",
+                "icon_path": "src/static/img/icons/heritage.png",
                 "cmd": lambda: self.__controller.show_home(),  # TODO
             },
             {
@@ -51,7 +51,7 @@ class Home:
                 "desc": "Configurez ici l'ensemble de\nvos préférences et réglages.",
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["hover_color"],
-                "icon_path": "src/static/img/edit.png",
+                "icon_path": "src/static/img/icons/edit.png",
                 "cmd": lambda: self.__controller.show_configuration(),
             },
             {
@@ -59,7 +59,7 @@ class Home:
                 "desc": "Consulter l'aide et\nles mentions légales.",
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["hover_color"],
-                "icon_path": "src/static/img/information.png",
+                "icon_path": "src/static/img/icons/information.png",
                 "cmd": lambda: self.__controller.show_information(),
             },
         ]

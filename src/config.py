@@ -6,14 +6,12 @@ CONFIG_PATH = os.path.join("config.json")
 
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
-        # Créer un fichier par défaut s'il n'existe pas
         default_config = {
-            "bank": "Non défini",
-            "extract_file": "",
             "destination_path": "exports",
             "smart_categorization_enabled": "true",
             "database": {
-                "database_path": "data/bank_accounts.db",
+                "db_banking_path": "data/bank_accounts.db",
+                "db_stock_path": "data/stock.db",
                 "incomes": {
                     "short_label_and_operation_type": {
                         "Remise Chèques": ["Remise Chèques"],

@@ -4,6 +4,7 @@ import customtkinter as ctk
 
 from accounts.banking.database.banking_db import BankingDB
 from config import load_config
+from utils.window_utils import center_window_on_parent
 
 
 class Categorizer:
@@ -18,32 +19,26 @@ class Categorizer:
     - Enregistrer les opérations catégorisées dans la base et les marquer comme traitées.
     """
 
-    def __init__(self, parent: ctk.CTk, db: BankingDB, bank_account_id: int, buttons_per_row=5) -> None:
-        """
-        Initialise l'interface de catégorisation et charge les données nécessaires.
-
-        Prépare l'état initial de l'application en récupérant la hiérarchie des
-        catégories, les identifiants techniques et la liste des opérations à traiter.
-        """
-
+    def __init__(self, parent: ctk.CTk, db_banking: BankingDB, bank_account_id: int, buttons_per_row=5) -> None:
         config = load_config()
 
         # Permet de savoir s'il y a eu de nouvelles opérations qui ont été catégorisées
         self.has_changed = False
 
-        self.__db = db
+        self.__parent = parent
+        self.__db_banking = db_banking
         self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
         self.__smart_categorization_enabled = config["smart_categorization_enabled"]
         self.__theme = config["theme"]
         self.__custom_rules = config["custom_rules"]
-        self.__operations = self.__db.get_unprocessed_raw_operations(self.__bank_account_id)
+        self.__operations = self.__db_banking.get_unprocessed_raw_operations(self.__bank_account_id)
         self.__incomes_categories_and_sub_categories = config["database"]["incomes"]["categories_subcategories"]
         self.__expenses_categories_and_sub_categories = config["database"]["expenses"]["categories_subcategories"]
         self.__history = []  # Pile pour stocker les opérations précédemment traitées
 
         # On crée une fenêtre secondaire liée au parent
-        self.__root = ctk.CTkToplevel(parent)
+        self.__root = ctk.CTkToplevel(self.__parent)
         self.__root.title("Classification des opérations")
         self.__root.grab_set()  # Rend la fenêtre "modale" (bloque celle du dessous)
         self.__window_width = 1200
@@ -61,39 +56,36 @@ class Categorizer:
         Lance l'interface graphique pour la catégorisation des opérations.
 
         Actions :
+        - Pré-traite et catégorise automatiquement toutes les opérations éligibles
         - Configure la fenêtre principale
         - Centre la fenêtre à l'écran
-        - Affiche la première opération à catégoriser
-        - Démarre la boucle principale Tkinter pour gérer les interactions utilisateur
+        - Affiche la première opération restante nécessitant une catégorisation manuelle
+        - Démarre la boucle principale Tkinter
         """
 
-        self.__root.title("Catégorisation d'opérations")
+        # Pré-traitement automatique en amont de toutes les opérations
+        remaining_operations = []
+        for op in self.__operations:
+            afficher_button = self.__process_special_cases(op)
+            if not afficher_button:
+                # Opération catégorisée automatiquement
+                self.has_changed = True
+            else:
+                remaining_operations.append(op)
 
-        self.__center_window()
+        self.__operations = remaining_operations
+
+        self.__root.title("Catégorisation d'opérations")
+        center_window_on_parent(self.__root, self.__parent, self.__window_width, self.__window_height)
         self.__update_display()
 
         return self.__root
-
-    def __center_window(self) -> None:
-        """
-        Centre la fenêtre Tkinter sur l'écran en ajustant sa position
-        en fonction de la largeur et hauteur de l'écran et de la fenêtre.
-        """
-
-        screen_width = self.__root.winfo_screenwidth()
-        screen_height = self.__root.winfo_screenheight()
-
-        x = (screen_width // 2) - (self.__window_width // 2)
-        y = (screen_height // 2) - (self.__window_height // 2)
-
-        self.__root.geometry(f"{self.__window_width}x{self.__window_height}+{x}+{y}")
 
     def __update_display(self) -> None:
         """
         Met à jour l'affichage de l'interface Tkinter avec l'opération courante.
 
         - Si aucune opération n'est disponible, ferme la fenêtre.
-        - Traite les cas spéciaux automatiquement si applicable.
         - Affiche le texte descriptif de l'opération.
         - Détermine et affiche les boutons des catégories pertinentes selon le montant.
         """
@@ -102,21 +94,12 @@ class Categorizer:
             self.__root.after(0, self.__root.destroy)
             return
 
-        # On marque qu'une catégorisation à eu lieu
+        # On marque qu'une catégorisation manuelle a lieu
         self.has_changed = True
 
-        # Récupère la première opération
+        # Récupère la première opération restante
         row = self.__operations[0]
         self.current_row = row
-
-        # Traite les cas spéciaux
-        afficher_button = self.__process_special_cases(row)
-
-        if not afficher_button:
-            # L'opération a déjà été catégorisée automatiquement
-            self.__operations.pop(0)
-            self.__update_display()
-            return
 
         # Affichage du texte
         self.__display_label.configure(text=row["label"] + "\n\n" + f"{row['operation_date']}   =>   {row['amount']}€")
@@ -290,7 +273,7 @@ class Categorizer:
         last_operation = self.__history.pop()
 
         # Suppression en base de données via l'ID de l'opération
-        self.__db.delete_operation(self.__bank_account_id, last_operation[0])
+        self.__db_banking.delete_operation(self.__bank_account_id, last_operation[0])
 
         # Réinsertion en première position de la liste de travail
         self.__operations.insert(0, last_operation)
@@ -311,7 +294,7 @@ class Categorizer:
         self.__history.append(self.current_row)
 
         # Conversion des noms des boutons en IDs techniques
-        self.__db.update_operation_according_classification(
+        self.__db_banking.update_operation_according_classification(
             self.__operations[0]["id"],
             main_categorie,
             sub_categorie,
@@ -320,12 +303,6 @@ class Categorizer:
         # Passage à l'élément suivant
         self.__operations.pop(0)
         self.__update_display()
-
-    def __normalize_text(self, text: str) -> str:
-        """Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules"""
-
-        normalized = unicodedata.normalize("NFD", text)
-        return "".join(c for c in normalized if unicodedata.category(c) != "Mn").lower()
 
     def __process_special_cases(self, row: dict) -> bool:
         """
@@ -345,11 +322,11 @@ class Categorizer:
 
         # Recherche dans l'historique des opérations
         if self.__smart_categorization_enabled:
-            target_cat, target_subcat = self.__db.get_category_by_exact_label(
+            target_cat, target_subcat = self.__db_banking.get_category_by_exact_label(
                 self.__bank_account_id, label, short_label, operation_type
             )
             if target_cat is not None:
-                self.__db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__db_banking.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         # Regarde si une règle existe
@@ -418,7 +395,14 @@ class Categorizer:
             if rule_matched and conditions:
                 target_cat = custom_rule.get("target_category", "")
                 target_subcat = custom_rule.get("target_subcategory", "")
-                self.__db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__db_banking.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         return True
+
+    @staticmethod
+    def __normalize_text(text: str) -> str:
+        """Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules"""
+
+        normalized = unicodedata.normalize("NFD", text)
+        return "".join(c for c in normalized if unicodedata.category(c) != "Mn").lower()

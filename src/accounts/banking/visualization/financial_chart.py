@@ -6,8 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from config import load_config
 from accounts.banking.database.banking_db import BankingDB
+from config import load_config
 
 
 class FinancialChart:
@@ -22,8 +22,8 @@ class FinancialChart:
     - Produire des bilans annuels et mensuels en créant et sauvegardant automatiquement les fichiers HTML.
     """
 
-    def __init__(self, db: BankingDB, bank_account_name: str) -> None:
-        self.__db = db
+    def __init__(self, db_banking: BankingDB, bank_account_name: str) -> None:
+        self.__db_banking = db_banking
         self.__root_path = os.path.join(load_config()["destination_path"], bank_account_name)
         self.__file_highcharts = []
 
@@ -41,7 +41,7 @@ class FinancialChart:
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
         """
 
-        years_data = self.__db.get_categorized_operations_by_year(bank_account_id)
+        years_data = self.__db_banking.get_categorized_operations_by_year(bank_account_id)
 
         all_years_incomes = []
         all_years_expenses = []
@@ -63,7 +63,6 @@ class FinancialChart:
                 pd.concat(all_years_incomes), pd.concat(all_years_expenses), pd.concat(all_years_combined)
             )
 
-    # --- [ Production des Bilans ] ---
     def __generate_annual_report(
         self, incomes_df: pd.DataFrame, expenses_df: pd.DataFrame, incomes_expenses_df: pd.DataFrame
     ) -> None:
@@ -119,7 +118,6 @@ class FinancialChart:
         # Reset après écriture
         self.__file_highcharts = []
 
-    # --- [ Génération de Graphiques ] ---
     def __create_sankey_chart(self, incomes_expenses_df: pd.DataFrame) -> str:
         """
         Génère le code HTML/JavaScript pour un diagramme de Sankey dynamique.
@@ -128,8 +126,8 @@ class FinancialChart:
         """
 
         # 1. Récupération dynamique des catégories de revenus
-        # On suppose que self.__db est ton instance de BankingDB
-        incomes_categories, _ = self.__db.get_category_lists()
+        # On suppose que self.__db_banking est ton instance de BankingDB
+        incomes_categories, _ = self.__db_banking.get_category_lists()
 
         # Génération d'un ID unique pour éviter les conflits si plusieurs graphiques
         graph_id = "sankey_" + str(uuid.uuid4()).replace("-", "_")
@@ -354,7 +352,7 @@ class FinancialChart:
 
         months_labels = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 
-        incomes_list, expenses_list = self.__db.get_category_lists()
+        incomes_list, expenses_list = self.__db_banking.get_category_lists()
 
         incomes_df = incomes_expenses_df[incomes_expenses_df["category"].isin(incomes_list)]
         expenses_df = incomes_expenses_df[incomes_expenses_df["category"].isin(expenses_list)]
@@ -745,7 +743,7 @@ class FinancialChart:
         """
 
         # 1. Récupération des catégories depuis la DB
-        incomes_categories, _ = self.__db.get_category_lists()
+        incomes_categories, _ = self.__db_banking.get_category_lists()
 
         incomes_expenses_df["operation_date"] = pd.to_datetime(incomes_expenses_df["operation_date"])
         incomes_expenses_df["year"] = incomes_expenses_df["operation_date"].dt.year

@@ -35,7 +35,7 @@ class Chart:
             fg_color=self.__theme["blue_03"]["fg_color"],
             hover_color=self.__theme["blue_03"]["hover_color"],
             width=40,
-            command=lambda: self.__controller.show_account_menu(bank_account_row),
+            command=lambda: self.__controller.show_bank_account_menu(bank_account_row),
         )
         back_btn.place(x=0, y=15)
 
@@ -68,8 +68,8 @@ class Chart:
             ctk.CTkLabel(scroll_container, text="Aucun bilan généré pour le moment.", font=("Arial", 16)).pack(pady=100)
             return
 
-        download_icon = ctk.CTkImage(light_image=Image.open("src/static/img/download.png"), size=(24, 24))
-        calendar_logo = ctk.CTkImage(light_image=Image.open("src/static/img/chart.png"), size=(48, 48))
+        download_icon = ctk.CTkImage(light_image=Image.open("src/static/img/icons/download.png"), size=(24, 24))
+        calendar_logo = ctk.CTkImage(light_image=Image.open("src/static/img/icons/chart.png"), size=(48, 48))
 
         # Génération des cartes d'années
         for i, data in enumerate(available_years):

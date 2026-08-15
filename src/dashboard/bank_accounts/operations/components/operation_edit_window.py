@@ -4,7 +4,8 @@ import customtkinter as ctk
 
 from accounts.banking.database.banking_db import BankingDB
 from config import load_config
-from dashboard.bank_accounts.operations.components.ctk_date_entry import CtkDateEntry
+from utils.ctk_date_entry import CtkDateEntry
+from utils.window_utils import center_window_on_parent
 
 
 class OperationEditWindow(ctk.CTkToplevel):
@@ -24,8 +25,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         self.attributes("-topmost", False)
 
         self.geometry("450x600")
-        width, height = 450, 600
-        self.__center_window(width, height)
+        center_window_on_parent(self, parent, 450, 600)
 
         self.__config = load_config()
         self.__theme = self.__config["theme"]
@@ -278,12 +278,3 @@ class OperationEditWindow(ctk.CTkToplevel):
         self.__error_label.configure(text="")
         self._on_save(data)
         self.destroy()
-
-    def __center_window(self, width: int, height: int) -> None:
-        """Centre une fenêtre au milieu de l'écran"""
-
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        x = (screen_width // 2) - (width // 2)
-        y = (screen_height // 2) - (height // 2)
-        self.geometry(f"{width}x{height}+{x}+{y}")

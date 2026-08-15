@@ -1,19 +1,12 @@
-from tkinter import messagebox
-
 import customtkinter as ctk
 from PIL import Image
-
-from accounts.banking.database.banking_db import BankingDB
-from config import load_config, save_config
 
 
 class Configuration:
     def __init__(self, master: ctk.CTkFrame, controller) -> None:
         self.__master = master
         self.__controller = controller
-        self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__db_path = self.__config["database"]["database_path"]
 
     def display(self) -> None:
         self.__controller.destroy_widgets()
@@ -38,24 +31,9 @@ class Configuration:
             inner_container,
             0,
             0,
-            "Source Bancaire",
-            "Renseignez ici les établissements bancaires que vous utilisez au quotidien, tels que la BNP Paribas, Boursorama ou le Crédit Agricole. Cette étape est essentielle pour identifier la provenance de vos flux financiers et permettre à l'application d'extraire et de traiter correctement vos données par la suite pour vos analyses.",
-            "src/static/img/bank_account.png",
-            self.__config["bank"],
-            command=self.__update_config_bank,
-            widget_type="menu",
-            menu_values=["Non défini", "BNP Paribas"],
-            width=CARD_W,
-            height=CARD_H,
-        )
-
-        self.__create_module_card(
-            inner_container,
-            0,
-            1,
             "Architecture",
             "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. Cette flexibilité vous permet de classer précisément chaque opération, qu'il s'agisse de revenus récurrents ou de dépenses imprévues, pour une analyse financière détaillée.",
-            "src/static/img/file.png",
+            "src/static/img/icons/file.png",
             "Ouvrir",
             command=self.__controller.show_categories_sub_categories,
             width=CARD_W,
@@ -65,10 +43,10 @@ class Configuration:
         self.__create_module_card(
             inner_container,
             0,
-            2,
+            1,
             "Automatisation",
             "Simplifiez votre gestion financière grâce à l'attribution automatique de vos nouvelles opérations. En analysant instantanément vos transactions selon vos critères prédéfinis, l'application classe automatiquement vos flux entrants et sortants pour vous offrir un suivi sans aucun effort manuel.",
-            "src/static/img/bot.png",
+            "src/static/img/icons/bot.png",
             "Ouvrir",
             command=self.__controller.show_automatisation_cat_sub_cat,
             width=CARD_W,
@@ -145,18 +123,3 @@ class Configuration:
             )
 
         widget.pack()
-
-    def __update_config_bank(self, bank: str):
-        """Met à jour la banque dans le fichier de configuration"""
-
-        try:
-            full_config = load_config()
-            full_config["bank"] = bank
-
-            save_config(full_config)
-            self.__config = load_config()
-            self.__controller.set_db(BankingDB(self.__db_path))
-
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de l'écriture du fichier : {e}")
-            raise

@@ -36,7 +36,7 @@ class ExcelReport:
             fg_color=self.__theme["magenta"]["fg_color"],
             hover_color=self.__theme["magenta"]["hover_color"],
             width=40,
-            command=lambda: self.__controller.show_account_menu(bank_account_row),
+            command=lambda: self.__controller.show_bank_account_menu(bank_account_row),
         )
         back_btn.place(x=0, y=15)
 
@@ -69,8 +69,8 @@ class ExcelReport:
             ctk.CTkLabel(scroll_container, text="Aucun bilan généré pour le moment.", font=("Arial", 16)).pack(pady=100)
             return
 
-        download_logo = ctk.CTkImage(light_image=Image.open("src/static/img/download.png"), size=(24, 24))
-        excel_logo = ctk.CTkImage(light_image=Image.open("src/static/img/file.png"), size=(48, 48))
+        download_logo = ctk.CTkImage(light_image=Image.open("src/static/img/icons/download.png"), size=(24, 24))
+        excel_logo = ctk.CTkImage(light_image=Image.open("src/static/img/icons/file.png"), size=(48, 48))
 
         # Génération des cartes d'années
         for i, data in enumerate(available_years):
@@ -155,5 +155,4 @@ class ExcelReport:
                 )
 
         except Exception as e:
-            messagebox.showerror("Erreur", f"Échec du téléchargement : {str(e)}")
-            raise
+            messagebox.showerror("Erreur", f"Échec du téléchargement : {e}")

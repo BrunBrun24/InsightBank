@@ -1,6 +1,6 @@
 import os
 import shutil
-import unicodedata
+import threading
 from datetime import datetime
 from tkinter import messagebox
 
@@ -13,6 +13,8 @@ from accounts.banking.processing.categorizer import Categorizer
 from accounts.banking.reporting.excel_generator import ExcelGenerator as BnpParibasExcelReportGenerator
 from accounts.banking.visualization.financial_chart import FinancialChart
 from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
+from utils.data_utils import remove_accents
+from utils.loading_page import LoadingPopup
 
 
 class Operations:
@@ -21,8 +23,8 @@ class Operations:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__db_path = self.__config["database"]["database_path"]
-        self.__db = BankingDB(self.__db_path)
+        self.__db_banking_path = self.__config["database"]["db_banking_path"]
+        self.__db_banking = BankingDB(self.__db_banking_path)
         self.__sort_column = "operation_date"
         self.__sort_ascending = False
 
@@ -41,7 +43,7 @@ class Operations:
             fg_color=self.__theme["blue_01"]["fg_color"],
             hover_color=self.__theme["blue_01"]["hover_color"],
             width=40,
-            command=lambda: self.__controller.show_account_menu(bank_account_row),
+            command=lambda: self.__controller.show_bank_account_menu(bank_account_row),
         )
         back_btn.place(x=0, y=15)
 
@@ -71,7 +73,7 @@ class Operations:
             command=lambda: self.__handle_add_operation(bank_account_row),
         ).pack(side="left", padx=5)
 
-        operations = self.__db.get_unprocessed_raw_operations(bank_account_row["id"])
+        operations = self.__db_banking.get_unprocessed_raw_operations(bank_account_row["id"])
         ctk.CTkButton(
             account_actions_bar,
             text="Catégoriser les opérations",
@@ -99,7 +101,7 @@ class Operations:
         items_per_page = 21
 
         try:
-            df = self.__db.get_operations_by_bank_account(bank_account_id)
+            df = self.__db_banking.get_operations_by_bank_account(bank_account_id)
 
             if not df.empty:
                 # Logique de Tri et Pagination
@@ -110,9 +112,7 @@ class Operations:
                 df = df.sort_values(
                     by=[self.__sort_column, "id_view"],
                     ascending=[self.__sort_ascending, False],
-                    key=lambda col: col.map(
-                        lambda x: self.__remove_accents(str(x).lower()) if isinstance(x, str) else x
-                    ),
+                    key=lambda col: col.map(lambda x: remove_accents(str(x).lower()) if isinstance(x, str) else x),
                 )
 
                 total_ops = len(df)
@@ -328,7 +328,7 @@ class Operations:
 
         win = OperationEditWindow(
             parent=self.__master,
-            db=self.__db,
+            db=self.__db_banking,
             bank_account_id=bank_account_row["id"],
             operation=default_op,
             on_save_callback=lambda data: self.__process_add(data, bank_account_row),
@@ -339,20 +339,19 @@ class Operations:
         """Gère la suppression d'une opération et rafraîchit l'affichage."""
 
         try:
-            self.__db.delete_operation(bank_account_row["id"], operation_id)
+            self.__db_banking.delete_operation(bank_account_row["id"], operation_id)
             self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_operations(bank_account_row)
+            self.__controller.show_bank_operations(bank_account_row)
 
         except Exception as e:
-            messagebox.showerror(f"Erreur lors de la suppression d'une opération' : {str(e)}")
-            raise
+            messagebox.showerror(f"Erreur lors de la suppression d'une opération' : {e}")
 
     def __handle_edit_operation(self, operation: pd.Series, bank_account_row: pd.Series) -> None:
         """Ouvre la fenêtre de modification pour une opération donnée."""
 
         OperationEditWindow(
             self.__master,
-            self.__db,
+            self.__db_banking,
             bank_account_row["id"],
             operation,
             lambda data: self.__process_update(data, bank_account_row),
@@ -361,87 +360,109 @@ class Operations:
     def __handle_import_process(self, bank_account_row: pd.Series) -> None:
         """Lance l'extraction, gère les doublons avec confirmation utilisateur et injecte les données."""
 
+        extractor = DataExtractor(bank_account_row["id"], self.__master)
+        df = extractor.run_extraction()
+
+        if df is None or df.empty:
+            return
+
+        df["bank_account_id"] = bank_account_row["id"]
+        existing_ops = self.__db_banking.get_operations_by_bank_account(bank_account_row["id"])
+
+        if not existing_ops.empty:
+            # Création des clés uniques de comparaison
+            existing_ops["match_key"] = (
+                existing_ops["operation_date"].astype(str)
+                + "_"
+                + existing_ops["label"].astype(str).str.strip()
+                + "_"
+                + existing_ops["amount"].astype(float).round(2).astype(str)
+            )
+
+            df["match_key"] = (
+                df["operation_date"].astype(str)
+                + "_"
+                + df["label"].astype(str).str.strip()
+                + "_"
+                + df["amount"].astype(float).round(2).astype(str)
+            )
+
+            # Identification des doublons
+            duplicates_mask = df["match_key"].isin(existing_ops["match_key"])
+            nb_duplicates = duplicates_mask.sum()
+
+            if nb_duplicates > 0:
+                # Demande de confirmation à l'utilisateur
+                import_duplicates = messagebox.askyesno(
+                    "Doublons détectés",
+                    f"{nb_duplicates} opération(s) importée(s) semble(nt) déjà exister dans la base de données.\n\n"
+                    "Souhaitez-vous quand même les importer ?",
+                )
+
+                # Si l'utilisateur choisit Non (False), on retire les doublons du DataFrame
+                if not import_duplicates:
+                    df = df[~duplicates_mask]
+
+            # Nettoyage de la colonne temporaire de clé
+            df = df.drop(columns=["match_key"])
+
+        if df.empty:
+            messagebox.showinfo("Importation", "Aucune nouvelle opération n'a été ajoutée.")
+            return
+
+        loading_win = LoadingPopup(self.__master, "Importation des données en cours...")
+
+        def task():
+            try:
+                self.__db_banking.add_operations(df)
+                self.__master.after(0, lambda: self.__process_categorization(bank_account_row, loading_win))
+
+            except Exception as e:
+                self.__master.after(0, lambda err=e: self.__on_import_error(err, loading_win))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def __process_categorization(self, bank_account_row: pd.Series, loading_win: LoadingPopup) -> None:
+        """Ferme la barre de chargement et ouvre la catégorisation."""
+        if loading_win and loading_win.winfo_exists():
+            loading_win.close()
+
         try:
-            extractor = DataExtractor()
-            df = extractor.run_extraction(bank_account_row["id"])
-
-            if df is None or df.empty:
-                return
-
-            df["bank_account_id"] = bank_account_row["id"]
-
-            # Récupération des opérations existantes pour ce compte
-            existing_ops = self.__db.get_operations_by_bank_account(bank_account_row["id"])
-
-            if not existing_ops.empty:
-                # Création des clés uniques de comparaison
-                existing_ops["match_key"] = (
-                    existing_ops["operation_date"].astype(str)
-                    + "_"
-                    + existing_ops["label"].astype(str).str.strip()
-                    + "_"
-                    + existing_ops["amount"].astype(float).round(2).astype(str)
-                )
-
-                df["match_key"] = (
-                    df["operation_date"].astype(str)
-                    + "_"
-                    + df["label"].astype(str).str.strip()
-                    + "_"
-                    + df["amount"].astype(float).round(2).astype(str)
-                )
-
-                # Identification des doublons
-                duplicates_mask = df["match_key"].isin(existing_ops["match_key"])
-                nb_duplicates = duplicates_mask.sum()
-
-                if nb_duplicates > 0:
-                    # Demande de confirmation à l'utilisateur
-                    import_duplicates = messagebox.askyesno(
-                        "Doublons détectés",
-                        f"{nb_duplicates} opération(s) importée(s) semble(nt) déjà exister dans la base de données.\n\n"
-                        "Souhaitez-vous quand même les importer ?",
-                    )
-
-                    # Si l'utilisateur choisit Non (False), on retire les doublons du DataFrame
-                    if not import_duplicates:
-                        df = df[~duplicates_mask]
-
-                # Nettoyage de la colonne temporaire de clé
-                df = df.drop(columns=["match_key"])
-
-            # Si aucune donnée ne reste à insérer
-            if df.empty:
-                messagebox.showinfo("Importation", "Aucune nouvelle opération n'a été ajoutée.")
-                return
-
-            # Insertion des opérations validées
-            self.__db.add_operations(df)
-
-            # Catégorise les différentes opérations
-            categorizer = Categorizer(self.__master, self.__db, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__db_banking, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
                 self.__master.wait_window(cat_window)
 
             self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-
-            messagebox.showinfo(
-                "Succès",
-                f"Données importées avec succès pour le compte : {bank_account_row['name']}",
-            )
-            self.__controller.show_operations(bank_account_row)
+            self.__controller.show_bank_operations(bank_account_row)
+            self.__on_import_success(bank_account_row, None)
 
         except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de l'insertion : {e}")
-            raise
+            self.__on_import_error(e, None)
+
+    def __on_import_success(self, bank_account_row: pd.Series, loading_win: LoadingPopup | None) -> None:
+        """Rappel exécuté sur le thread principal en cas de succès."""
+        if loading_win is not None and loading_win.winfo_exists():
+            loading_win.close()
+
+        messagebox.showinfo(
+            "Succès",
+            f"Données importées avec succès pour le compte : {bank_account_row['name']}",
+        )
+
+    def __on_import_error(self, error: Exception, loading_win: LoadingPopup | None) -> None:
+        """Rappel exécuté sur le thread principal en cas d'erreur."""
+        if loading_win is not None and loading_win.winfo_exists():
+            loading_win.close()
+
+        messagebox.showerror("Erreur", f"Erreur lors de l'insertion : {error}")
 
     def __handle_categorization_process(self, bank_account_row: pd.Series) -> None:
         """Lance le processus de catégorisation."""
 
         try:
-            categorizer = Categorizer(self.__master, self.__db, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__db_banking, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
@@ -449,36 +470,33 @@ class Operations:
 
             if categorizer.has_changed:
                 self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-                self.__controller.show_operations(bank_account_row)
+                self.__controller.show_bank_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de la catégorisation : {e}")
-            raise
 
     def __process_add(self, new_operation: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
 
         try:
             df = pd.DataFrame([new_operation])
-            self.__db.add_operations(df)
+            self.__db_banking.add_operations(df)
             self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_operations(bank_account_row)
+            self.__controller.show_bank_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de l'ajout : {e}")
-            raise
 
     def __process_update(self, updated_data: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
 
         try:
-            self.__db.update_operation(bank_account_row["id"], updated_data)
+            self.__db_banking.update_operation(bank_account_row["id"], updated_data)
             self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_operations(bank_account_row)
+            self.__controller.show_bank_operations(bank_account_row)
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors de la mise à jour : {e}")
-            raise
 
     def __update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un compte bancaire."""
@@ -489,20 +507,9 @@ class Operations:
             shutil.rmtree(path)
 
         # Créer les graphiques HTML
-        chart_generator = FinancialChart(self.__db, bank_account_name)
+        chart_generator = FinancialChart(self.__db_banking, bank_account_name)
         chart_generator.generate_all_reports(bank_account_id)
 
         # Créer les fichiers Excel
-        excel_generator = BnpParibasExcelReportGenerator(self.__db, bank_account_name)
+        excel_generator = BnpParibasExcelReportGenerator(self.__db_banking, bank_account_name)
         excel_generator.generate_all_reports(bank_account_id)
-
-    @staticmethod
-    def __remove_accents(input_str: str) -> str:
-        """Remplace les lettre avec des accents"""
-
-        if not isinstance(input_str, str):
-            return input_str
-
-        # Normalise les caractères (ex: 'É' devient 'E')
-        nfkd_form = unicodedata.normalize("NFKD", input_str)
-        return "".join([c for c in nfkd_form if not unicodedata.combining(c)])

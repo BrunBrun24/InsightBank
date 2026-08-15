@@ -19,7 +19,6 @@ class AutomatisationCatSubCat:
         """Affiche la page d'automatisation des catégories et sous-catégories."""
 
         self.__controller.destroy_widgets()
-
         self.__custom_rules = self.__config.get("custom_rules", [])
 
         # Extraction extensive depuis le json (incomes + expenses)
@@ -48,16 +47,31 @@ class AutomatisationCatSubCat:
                 self.all_categories_map[cat].extend(subcats)
                 self.all_categories_map[cat] = list(set(self.all_categories_map[cat]))
 
-        # Conteneur principal
-        self.main_frame = ctk.CTkScrollableFrame(self.__master, fg_color="transparent")
-        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Header supérieur
+        header_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
+        header_frame.pack(fill="x", padx=20, pady=10)
 
-        title = ctk.CTkLabel(
-            self.main_frame,
-            text="Gestionnaire de Règles d'Automatisation Complexes",
-            font=ctk.CTkFont(size=18, weight="bold"),
+        # Bouton de retour placé en absolu pour ne pas gêner le centrage du label
+        back_btn = ctk.CTkButton(
+            header_frame,
+            text="←",
+            fg_color=self.__theme["blue_01"]["fg_color"],
+            hover_color=self.__theme["blue_01"]["hover_color"],
+            width=40,
+            command=self.__controller.show_configuration,
         )
-        title.pack(anchor="w", pady=(0, 15))
+        back_btn.place(x=0, y=15)
+
+        # Titre centré
+        ctk.CTkLabel(
+            header_frame,
+            text="Gestionnaire de Règles d'Automatisation Complexes",
+            font=("Arial", 30, "bold"),
+        ).pack(pady=(5, 10))
+
+        # Conteneur principal défilable
+        self.main_frame = ctk.CTkScrollableFrame(self.__master, fg_color="transparent")
+        self.main_frame.pack(fill="both", expand=True, padx=20, pady=(5, 20))
 
         # Section option / Configuration
         self.__render_settings_section()
