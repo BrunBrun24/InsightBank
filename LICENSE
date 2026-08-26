@@ -19,3 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+THIRD-PARTY NOTICES AND LICENSES
+
+This project uses Highcharts (https://www.highcharts.com/) for interactive data visualisations.
+Highcharts is NOT licensed under the MIT License and remains the property of Highsoft AS.
+Any reuse, modification, or redistribution of this software must comply with Highcharts licensing terms:
+- Non-commercial / Personal use: Free under Highcharts Non-Commercial License.
+- Commercial use: Requires a valid commercial license from Highsoft AS.
