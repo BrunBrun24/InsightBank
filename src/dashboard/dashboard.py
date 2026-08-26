@@ -22,20 +22,50 @@ from utils.loading_popup import LoadingPopup
 
 
 class Dashboard(ctk.CTk):
-    """Interface principale de l'application Financial Data Visualizer."""
+    """Interface principale de l'application."""
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.__config = load_config()
-        self.__theme = self.__config["theme"]
-        self.__banking_db_path = self.__config["database"]["db_banking_path"]
-        self.__db_stock_path = self.__config["database"]["db_stock_path"]
-        self.__banking_db = BankingDB(self.__banking_db_path)
-        self.__stock_db = StockDB(self.__db_stock_path)
+        # Configuration de base de la fenêtre
+        self.title("InsightBank - Dashboard")
+        self.minsize(1000, 800)
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
 
-        self.__setup_interface()
+        # Mise en place du layout de base
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.__main_view = ctk.CTkFrame(self, corner_radius=15, fg_color="transparent")
+        self.__main_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
+        # Centrage et affichage maximisé
+        self.after(20, lambda: self.wm_state("zoomed"))
+
+        # Affichage immédiat du popup de chargement par-dessus
+        self.update()  # Force Tkinter à initialiser la fenêtre principale
+        self.__loading_win = LoadingPopup(self, "Lancement d'InsightBank et chargement des données...")
+
+        # Lancement du chargement lourd en arrière-plan
+        threading.Thread(target=self.__async_init, daemon=True).start()
+
+    def __async_init(self) -> None:
+        """Effectue les chargements lourds en arrière-plan."""
+        try:
+            self.__config = load_config()
+            self.__theme = self.__config["theme"]
+            self.__banking_db_path = self.__config["database"]["db_banking_path"]
+            self.__db_stock_path = self.__config["database"]["db_stock_path"]
+            self.__banking_db = BankingDB(self.__banking_db_path)
+            self.__stock_db = StockDB(self.__db_stock_path)
+
+            # Demande au thread principal de construire la suite des modules
+            self.after(0, self.__finish_init)
+        except Exception as e:
+            self.after(0, lambda err=e: self.__on_init_error(err))
+
+    def __finish_init(self) -> None:
+        """Construit le reste des modules une fois les bases de données chargées."""
         self.__bank_account_module = Account(self.__main_view, self, mode="banking")
         self.__stock_account_module = Account(self.__main_view, self, mode="stock")
         self.__home_module = Home(self.__main_view, self)
@@ -53,6 +83,15 @@ class Dashboard(ctk.CTk):
 
         self.__setup_navigation_frame()
         self.show_home()
+
+        # Fermeture de la fenêtre de chargement
+        if self.__loading_win and self.__loading_win.winfo_exists():
+            self.__loading_win.close()
+
+    def __on_init_error(self, error: Exception) -> None:
+        if self.__loading_win and self.__loading_win.winfo_exists():
+            self.__loading_win.close()
+        raise error
 
     def get_db_banking(self) -> BankingDB:
         return self.__banking_db
@@ -151,7 +190,7 @@ class Dashboard(ctk.CTk):
     def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
         """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""
 
-        # On vide le container au cas où
+        # On vide le container
         for child in container.winfo_children():
             child.destroy()
 
@@ -217,25 +256,6 @@ class Dashboard(ctk.CTk):
                 height=35,
                 font=("Arial", 15, "bold"),
             ).pack(side="bottom", pady=20, padx=20, fill="x")
-
-    def __setup_interface(self) -> None:
-        """Création de l'interface graphique et centrage"""
-
-        self.title("InsightBank - Dashboard")
-        self.minsize(1000, 800)
-
-        # Lancement immédiat en mode maximisé
-        self.after(20, lambda: self.wm_state("zoomed"))
-
-        ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("blue")
-
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # Zone principale de contenu
-        self.__main_view = ctk.CTkFrame(self, corner_radius=15, fg_color="transparent")
-        self.__main_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
     def __setup_navigation_frame(self) -> None:
         """Crée une barre latérale étroite avec des icônes."""
@@ -328,15 +348,7 @@ class Dashboard(ctk.CTk):
         ).grid(row=6, column=0, padx=10, pady=10)
 
     def destroy_widgets(self) -> None:
-        """
-        Supprime tous les widgets de la vue principale et force le rafraîchissement
-        de l'affichage avant de continuer.
-        """
-
-        # Récupération de tous les enfants de la vue principale
         for widget in self.__main_view.winfo_children():
             widget.destroy()
 
-        # Force Tkinter à traiter tous les événements de destruction en attente
-        # Cela garantit que les widgets sont réellement enlevés de l'écran
         self.__main_view.update_idletasks()
