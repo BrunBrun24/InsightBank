@@ -26,13 +26,13 @@ class Categorizer:
         self.has_changed = False
 
         self.__parent = parent
-        self.__db_banking = db_banking
+        self.__banking_db = db_banking
         self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
         self.__smart_categorization_enabled = config["smart_categorization_enabled"]
         self.__theme = config["theme"]
         self.__custom_rules = config["custom_rules"]
-        self.__operations = self.__db_banking.get_unprocessed_raw_operations(self.__bank_account_id)
+        self.__operations = self.__banking_db.get_unprocessed_raw_operations(self.__bank_account_id)
         self.__incomes_categories_and_sub_categories = config["database"]["incomes"]["categories_subcategories"]
         self.__expenses_categories_and_sub_categories = config["database"]["expenses"]["categories_subcategories"]
         self.__history = []  # Pile pour stocker les opérations précédemment traitées
@@ -272,8 +272,10 @@ class Categorizer:
         # Récupère la dernière opération traitée (LIFO)
         last_operation = self.__history.pop()
 
-        # Suppression en base de données via l'ID de l'opération
-        self.__db_banking.delete_operation(self.__bank_account_id, last_operation[0])
+        # Réinitialise la catégorisation en base de données avec l'ID correct
+        self.__banking_db.update_operation_according_classification(
+            last_operation["id"], "", ""
+        )
 
         # Réinsertion en première position de la liste de travail
         self.__operations.insert(0, last_operation)
@@ -294,7 +296,7 @@ class Categorizer:
         self.__history.append(self.current_row)
 
         # Conversion des noms des boutons en IDs techniques
-        self.__db_banking.update_operation_according_classification(
+        self.__banking_db.update_operation_according_classification(
             self.__operations[0]["id"],
             main_categorie,
             sub_categorie,
@@ -322,11 +324,11 @@ class Categorizer:
 
         # Recherche dans l'historique des opérations
         if self.__smart_categorization_enabled:
-            target_cat, target_subcat = self.__db_banking.get_category_by_exact_label(
+            target_cat, target_subcat = self.__banking_db.get_category_by_exact_label(
                 self.__bank_account_id, label, short_label, operation_type
             )
             if target_cat is not None:
-                self.__db_banking.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__banking_db.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         # Regarde si une règle existe
@@ -395,7 +397,7 @@ class Categorizer:
             if rule_matched and conditions:
                 target_cat = custom_rule.get("target_category", "")
                 target_subcat = custom_rule.get("target_subcategory", "")
-                self.__db_banking.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__banking_db.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         return True

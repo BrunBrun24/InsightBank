@@ -12,8 +12,8 @@ class ExcelGenerator:
     """Générateur de rapports financiers au format Excel."""
 
     def __init__(self, db: BankingDB, bank_account_name: str) -> None:
-        self.__db_banking = db
-        self.__root_path = os.path.join(load_config()["destination_path"], bank_account_name)
+        self.__banking_db = db
+        self.__root_path = os.path.join(load_config()["destination_path"], "bank_account", bank_account_name)
         self.__months = [
             "JAN",
             "FÉV",
@@ -37,7 +37,7 @@ class ExcelGenerator:
     def generate_all_reports(self, bank_account_id: int) -> None:
         """Génère les rapports pour chaque année présente en base."""
 
-        df = self.__db_banking.get_categorized_operations_df(bank_account_id)
+        df = self.__banking_db.get_categorized_operations_df(bank_account_id)
 
         if df.empty:
             return
@@ -301,7 +301,7 @@ class ExcelGenerator:
     def __get_monthly_amounts(self, bank_account_id: int, year: int) -> pd.DataFrame:
         """Récupère les sommes des opérations groupées par mois et par sous-catégorie."""
 
-        df = self.__db_banking.get_categorized_operations_df(bank_account_id)
+        df = self.__banking_db.get_categorized_operations_df(bank_account_id)
         if df.empty:
             return pd.DataFrame(columns=["sub_category", "month_idx", "amount"])
 
@@ -317,7 +317,7 @@ class ExcelGenerator:
     def __get_filtered_structure(self, data_summary: pd.DataFrame) -> list:
         """Filtre et trie la structure par montant annuel décroissant."""
 
-        df_sub = self.__db_banking.get_all_operations("sub_categories")
+        df_sub = self.__banking_db.get_all_operations("sub_categories")
         if df_sub.empty:
             return []
 
@@ -326,7 +326,7 @@ class ExcelGenerator:
 
         full_structure = []
         categories = df_sub["parent_category"].unique()
-        recettes_names = self.__db_banking.get_categories_hierarchy()[0].keys()
+        recettes_names = self.__banking_db.get_categories_hierarchy()[0].keys()
 
         for main_group_name, target_cats in [("REVENUS", recettes_names), ("DÉPENSES", None)]:
             group_content = []

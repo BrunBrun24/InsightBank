@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from PIL import Image
 
+from config import load_config, save_config
+
 
 class Configuration:
     def __init__(self, master: ctk.CTkFrame, controller) -> None:
@@ -24,6 +26,16 @@ class Configuration:
         inner_container.pack(anchor="n")
         inner_container.grid_columnconfigure((0, 1, 2), weight=1, uniform="cards")
 
+        ticker_benchmark = load_config()["benchmark"]
+        if ticker_benchmark == "^GSPC":
+            benchmark = "S&P 500"
+        elif ticker_benchmark == "^IXIC":
+            benchmark = "NASDAQ"
+        elif ticker_benchmark == "URTH":
+            benchmark = "MSCI World"
+        elif ticker_benchmark == "^FCHI":
+            benchmark = "CAC 40"
+
         CARD_W = 550
         CARD_H = 300
 
@@ -31,8 +43,10 @@ class Configuration:
             inner_container,
             0,
             0,
-            "Architecture",
-            "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. Cette flexibilité vous permet de classer précisément chaque opération, qu'il s'agisse de revenus récurrents ou de dépenses imprévues, pour une analyse financière détaillée.",
+            "Catégories et Sous-Catégories",
+            "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. "
+            "Cette flexibilité vous permet de classer précisément chaque opération, qu'il s'agisse de revenus récurrents ou de "
+            "dépenses imprévues, pour une analyse financière détaillée.",
             "src/static/img/icons/file.png",
             "Ouvrir",
             command=self.__controller.show_categories_sub_categories,
@@ -45,10 +59,45 @@ class Configuration:
             0,
             1,
             "Automatisation",
-            "Simplifiez votre gestion financière grâce à l'attribution automatique de vos nouvelles opérations. En analysant instantanément vos transactions selon vos critères prédéfinis, l'application classe automatiquement vos flux entrants et sortants pour vous offrir un suivi sans aucun effort manuel.",
+            "Simplifiez votre gestion financière grâce à l'attribution automatique de vos nouvelles opérations. "
+            "En analysant instantanément vos opérations selon vos critères prédéfinis, l'application classe automatiquement "
+            "vos flux entrants et sortants pour vous offrir un suivi sans aucun effort manuel.",
             "src/static/img/icons/bot.png",
             "Ouvrir",
             command=self.__controller.show_automatisation_cat_sub_cat,
+            width=CARD_W,
+            height=CARD_H,
+        )
+
+        self.__create_module_card(
+            inner_container,
+            0,
+            2,
+            "Titres",
+            "Gérez la composition de vos portefeuilles en toute simplicité. "
+            "Ajoutez ou supprimez des entreprises et des titres financiers pour chaque portefeuille, "
+            "et conservez une vue d'ensemble claire de vos investissements.",
+            "src/static/img/icons/file.png",
+            "Ouvrir",
+            command=self.__controller.show_portfolio_tickers,
+            width=CARD_W,
+            height=CARD_H,
+        )
+
+        self.__create_module_card(
+            inner_container,
+            1,
+            0,
+            "Benchmark",
+            "Comparez la performance globale de votre portefeuille ainsi que chacun de vos titres "
+            "face à votre indice de référence. "
+            "Identifiez instantanément si vos investissements battent le marché "
+            "et repérez les actifs qui génèrent de la surperformance.",
+            "src/static/img/icons/stock.png",
+            benchmark,
+            command=self.__update_config_benchmark,
+            widget_type="menu",
+            menu_values=["S&P 500", "NASDAQ", "MSCI World", "CAC 40"],
             width=CARD_W,
             height=CARD_H,
         )
@@ -123,3 +172,19 @@ class Configuration:
             )
 
         widget.pack()
+
+    def __update_config_benchmark(self, benchmark: str):
+        """Met à jour le benchmark dans le fichier de configuration"""
+
+        if benchmark == "S&P 500":
+            benchmark = "^GSPC"
+        elif benchmark == "NASDAQ":
+            benchmark = "^IXIC"
+        elif benchmark == "MSCI World":
+            benchmark = "URTH"
+        elif benchmark == "CAC 40":
+            benchmark = "^FCHI"
+
+        full_config = load_config()
+        full_config["benchmark"] = benchmark
+        save_config(full_config)

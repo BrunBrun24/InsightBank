@@ -1,3 +1,5 @@
+import os
+import shutil
 import threading
 from datetime import datetime
 from tkinter import messagebox
@@ -8,9 +10,12 @@ import yfinance as yf
 
 from accounts.stock.importers.data_extractor import DataExtractor
 from accounts.stock.importers.fetch_stock import fetch_stock_data, get_ticker_from_isin
+from accounts.stock.processing.portfolio_tracker import PortfolioTracker
+from accounts.stock.reporting.stock_excel_generator import StockExcelGenerator
+from accounts.stock.visualization.portfolio_exporter import generate_rapport
 from dashboard.portfolio.transactions.components.transaction_edit_window import TransactionEditWindow
 from utils.data_utils import remove_accents
-from utils.loading_page import LoadingPopup
+from utils.loading_popup import LoadingPopup
 
 
 class Transactions:
@@ -18,7 +23,8 @@ class Transactions:
         self.__master = master
         self.__controller = controller
         self.__theme = controller.get_theme()
-        self.__db_stock = controller.get_db_stock()
+        self.__stock_db = controller.get_db_stock()
+        self.__config = controller.get_config()
         self.__sort_column = "date"
         self.__sort_ascending = False
 
@@ -43,7 +49,7 @@ class Transactions:
 
         ctk.CTkLabel(
             nav_header,
-            text="Gestion du Portfeuille",
+            text="Gestion du Portefeuille",
             font=("Arial", 40, "bold"),
         ).pack(pady=(5, 30))
 
@@ -99,7 +105,7 @@ class Transactions:
         }
 
         try:
-            df = self.__db_stock.get_transactions_by_stock_account(portfolio_id)
+            df = self.__stock_db.get_transactions_by_stock_account(portfolio_id)
 
             if not df.empty:
                 df = df.sort_values(by="date", ascending=True)
@@ -361,7 +367,7 @@ class Transactions:
         self.__update_table_content(stock_portfolio_row, page=1)
 
     def __handle_add_transaction(self, stock_portfolio_row: pd.Series) -> None:
-        """Ouvre la fenêtre pour ajouter une nouvelle opération."""
+        """Ouvre la fenêtre pour ajouter une nouvelle transaction."""
 
         # On définit les valeurs par défaut pour une nouvelle ligne
         default_tr = {
@@ -376,35 +382,42 @@ class Transactions:
 
         win = TransactionEditWindow(
             parent=self.__master,
-            db=self.__db_stock,
+            db=self.__stock_db,
             portfolio_id=stock_portfolio_row["id"],
-            transaction=default_tr,
             on_save_callback=lambda data: self.__process_add(data, stock_portfolio_row),
+            transaction=default_tr,
         )
         win.title("Ajouter une transaction")
 
     def __handle_delete_transaction(self, stock_portfolio_row: pd.Series, transaction_id: int) -> None:
-        """Gère la suppression d'une opération et rafraîchit l'affichage."""
+        """Gère la suppression d'une transaction et rafraîchit l'affichage."""
+        loading_win = LoadingPopup(self.__master, "Suppression en cours...")
 
-        try:
-            self.__db_stock.delete_transaction(transaction_id)
-            self.__controller.show_stock_transactions(stock_portfolio_row)
+        def task():
+            try:
+                self.__stock_db.delete_transaction(transaction_id)
+                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
+            except Exception:
+                self.__master.after(
+                    0, lambda: messagebox.showerror("Erreur", "Erreur lors de la suppression d'une transaction")
+                )
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, stock_portfolio_row))
 
-        except Exception as e:
-            messagebox.showerror(f"Erreur lors de la suppression d'une opération' : {e}")
+        threading.Thread(target=task, daemon=True).start()
 
     def __handle_edit_transaction(self, transaction: pd.Series, stock_portfolio_row: pd.Series) -> None:
         """Ouvre la fenêtre de modification en récupérant au préalable les données complètes en BDD."""
 
-        full_transaction_data = self.__db_stock.get_transaction_by_id(int(transaction["id"]))
-
-        TransactionEditWindow(
+        full_transaction_data = self.__stock_db.get_transaction_by_id(int(transaction["id"]))
+        win = TransactionEditWindow(
             self.__master,
-            self.__db_stock,
+            self.__stock_db,
             stock_portfolio_row["id"],
-            full_transaction_data,
             lambda data: self.__process_update(data, stock_portfolio_row),
+            full_transaction_data,
         )
+        win.title("Modifier une transaction")
 
     def __handle_import_process(self, stock_portfolio_row: pd.Series) -> None:
         """Lance l'extraction et injecte les données avec un écran de chargement bloquant."""
@@ -436,25 +449,25 @@ class Transactions:
                         "SPLIT",
                     ]
                     df = df[df["type"].isin(allowed_types)].reset_index(drop=True)
-                    df = self.__apply_free_tax(df)
+                    df["fee"] = df["fee"].fillna(0) - df["tax"].fillna(0).abs()
                     df = self.__aggregate_similar_trades(df)
                     df = self.__apply_split_trade_republic(df)
                     df = self.__apply_merge_trade_repulic(df)
-                    extracted_data, isin_ticker_add = fetch_stock_data(self.__db_stock, df)
+                    extracted_data, isin_ticker_add = fetch_stock_data(self.__stock_db, df)
                 elif (
                     self.__sanitize_and_validate(df)
                     and self.__validate_opearations(df)
                     and self.__validate_tickers(df)
                     and self.__validate_currencies(df)
                 ):
-                    extracted_data, isin_ticker_add = fetch_stock_data(self.__db_stock, df)
+                    extracted_data, isin_ticker_add = fetch_stock_data(self.__stock_db, df)
                 else:
                     loading_win.close()
                     return
 
                 tickers_to_add = [isin_ticker["ticker"] for isin_ticker in isin_ticker_add]
-                self.__db_stock.add_data_tickers(tickers_to_add, extracted_data)
-                self.__db_stock.add_tickers_in_portfolio_ticker(portfolio_id, tickers_to_add)
+                self.__stock_db.add_data_tickers(tickers_to_add, extracted_data)
+                self.__stock_db.add_tickers_in_portfolio_ticker(portfolio_id, tickers_to_add)
 
                 if source == "Trade Republic":
                     df = self.__apply_unbundling_trade_republic(df)
@@ -468,13 +481,11 @@ class Transactions:
                         "dividend": "dividend",
                     }
                     df["type"] = df["type"].str.lower().map(type_mapping).fillna(df["type"].str.lower())
-                    mask = df["type"].isin(["deposit"])
-                    df.loc[mask, "amount"] = df.loc[mask, "amount"].fillna(0) - df.loc[mask, "fee"].fillna(0).abs()
 
                     isin_ticker = []
                     for i_t in isin_ticker_add:
                         temp = {}
-                        temp["currency"] = self.__db_stock.get_currency(i_t["ticker"])
+                        temp["currency"] = self.__stock_db.get_currency(i_t["ticker"])
                         temp["ticker"] = i_t["ticker"]
                         temp["isin"] = i_t["isin"]
                         isin_ticker.append(temp)
@@ -482,7 +493,7 @@ class Transactions:
                     # Construction des mappings
                     isin_to_ticker = {item["isin"]: item["ticker"] for item in isin_ticker_add}
                     isin_to_currency = {
-                        item["isin"]: self.__db_stock.get_currency(item["ticker"]) for item in isin_ticker_add
+                        item["isin"]: self.__stock_db.get_currency(item["ticker"]) for item in isin_ticker_add
                     }
                     df["currency"] = df["symbol"].map(isin_to_currency).fillna(df["currency"])
                     df["symbol"] = df["symbol"].map(isin_to_ticker).fillna(df["symbol"])
@@ -492,11 +503,15 @@ class Transactions:
                     df["type"] = df["type"].str.lower()
 
                     df = self.__apply_currency_conversion_trade_republic(df, portfolio_id)
+                    mask = (df["type"] == "buy") & (df["fee"] > 0)
+                    df.loc[mask, "amount"] = (
+                        df.loc[mask, "amount"].fillna(0).abs() + df.loc[mask, "fee"].fillna(0).abs()
+                    )
 
                 else:
                     df = self.__apply_currency_conversion(df, portfolio_id)
 
-                ticker_to_id = self.__db_stock.get_portfolio_ticker_ids(portfolio_id)
+                ticker_to_id = self.__stock_db.get_portfolio_ticker_ids(portfolio_id)
                 df["portfolio_ticker_id"] = df["symbol"].map(ticker_to_id)
 
                 db_columns = [
@@ -513,7 +528,16 @@ class Transactions:
                     "fx_rate",
                 ]
                 operations_to_insert = df[db_columns]
-                self.__db_stock.add_transactions(operations_to_insert)
+                self.__stock_db.add_transactions(operations_to_insert)
+                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
+
+                if source == "Trade Republic":
+                    messagebox.showinfo(
+                        "Information",
+                        "Pour que votre portefeuille soit exact, veuillez vérifier et éventuellement modifier les transactions suivantes :\n\n"
+                        "• Pour toute transaction exécutée manuellement (hors plan d'investissement), ajoutez 1 € dans la colonne 'Montant'.\n\n"
+                        "• Pour les cadeaux reçus, ajoutez les dépôts nets (le montant investi directement, sans frais).",
+                    )
 
                 self.__master.after(0, lambda: self.__on_import_success(stock_portfolio_row, loading_win))
 
@@ -698,25 +722,41 @@ class Transactions:
         return True
 
     def __process_add(self, new_transaction: dict, stock_portfolio_row: pd.Series) -> None:
-        try:
-            df = pd.DataFrame([new_transaction])
-            self.__db_stock.add_transactions(df)
-            self.__controller.show_stock_transactions(stock_portfolio_row)
+        loading_win = LoadingPopup(self.__master, "Ajout en cours...")
 
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de l'ajout : {e}")
+        def task():
+            try:
+                df = pd.DataFrame([new_transaction])
+                self.__stock_db.add_transactions(df)
+                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
+            except Exception:
+                self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de l'ajout"))
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, stock_portfolio_row))
+
+        threading.Thread(target=task, daemon=True).start()
 
     def __process_update(self, updated_data: dict, stock_portfolio_row: pd.Series) -> None:
-        try:
-            self.__db_stock.update_transaction(updated_data)
-            self.__controller.show_stock_transactions(stock_portfolio_row)
+        loading_win = LoadingPopup(self.__master, "Modification en cours...")
 
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de la mise à jour : {e}")
+        def task():
+            try:
+                self.__stock_db.update_transaction(updated_data)
+                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
+            except Exception:
+                self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de la mise à jour"))
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, stock_portfolio_row))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def __on_process_complete(self, loading_win: LoadingPopup, stock_portfolio_row: pd.Series) -> None:
+        loading_win.close()
+        self.__controller.show_stock_transactions(stock_portfolio_row)
 
     def __apply_currency_conversion(self, df: pd.DataFrame, portfolio_id: int) -> pd.DataFrame:
         """Calcule et uniformise les prix, montants et taux de change pour un portefeuille."""
-        portfolio_currency = self.__db_stock.get_portfolio_currency(portfolio_id)
+        portfolio_currency = self.__stock_db.get_portfolio_currency(portfolio_id)
         df = df.copy()
 
         # Cast explicite des colonnes en float pour éviter la perte de précision (LossySetitemError)
@@ -735,8 +775,8 @@ class Transactions:
             date_str = str(row["date"])
 
             stock_currency = (
-                self.__db_stock.get_currency(symbol).upper()
-                if pd.notna(symbol) and self.__db_stock.get_currency(symbol)
+                self.__stock_db.get_currency(symbol).upper()
+                if pd.notna(symbol) and self.__stock_db.get_currency(symbol)
                 else tx_currency
             )
 
@@ -770,12 +810,12 @@ class Transactions:
         df["amount"] = df["original_amount"]
         df["fee"] = df["original_fee"]
 
-        portfolio_currency = self.__db_stock.get_portfolio_currency(portfolio_id)
+        portfolio_currency = self.__stock_db.get_portfolio_currency(portfolio_id)
 
         if portfolio_currency == "EUR":
             usd_mask = df["currency"] == "USD"
             for index, row in df[usd_mask].iterrows():
-                rate = self.__db_stock.get_rate(str(row["date"]), "EURUSD=X")
+                rate = self.__stock_db.get_rate(str(row["date"]), "EURUSD=X")
 
                 if rate is not None and rate > 0:
                     df.at[index, "fx_rate"] = rate
@@ -788,7 +828,7 @@ class Transactions:
 
         else:
             for index, row in df.iterrows():
-                rate = self.__db_stock.get_rate(str(row["date"]), "EURUSD=X")
+                rate = self.__stock_db.get_rate(str(row["date"]), "EURUSD=X")
                 if rate is not None and rate > 0:
                     df.at[index, "fx_rate"] = 1 / rate
 
@@ -802,7 +842,7 @@ class Transactions:
                     if row["type"] in ("buy", "sell", "dividend"):
                         df.at[index, "price"] = converted_price
 
-                        symbol_currency = self.__db_stock.get_currency(row["symbol"])
+                        symbol_currency = self.__stock_db.get_currency(row["symbol"])
                         if symbol_currency == "USD":
                             df.at[index, "original_amount"] = converted_amount
                             df.at[index, "original_fee"] = converted_fee
@@ -826,6 +866,8 @@ class Transactions:
         # Masque pour les lignes UNBUNDLING restantes (shares > 0)
         unbundling_mask = df["type"] == "UNBUNDLING"
 
+        deposits = []
+
         # Complétion des informations pour chaque opération d'attribution
         for idx, row in df[unbundling_mask].iterrows():
             ticker = get_ticker_from_isin(row["symbol"])
@@ -833,11 +875,12 @@ class Transactions:
             shares = float(row["shares"])
 
             # Récupération du prix de clôture à la date donnée et de la devise
-            close_price = self.__db_stock.get_rate(date_str, ticker) or 0.0
-            stock_currency = self.__db_stock.get_currency(ticker)
+            close_price = self.__stock_db.get_rate(date_str, ticker) or 0.0
+            stock_currency = self.__stock_db.get_currency(ticker)
 
             total_amount = round(shares * close_price, 2)
 
+            # Mise à jour de la ligne courante en BUY
             df.at[idx, "price"] = close_price
             df.at[idx, "original_price"] = close_price
             df.at[idx, "amount"] = total_amount
@@ -846,6 +889,23 @@ class Transactions:
             df.at[idx, "fee"] = 0.0
             df.at[idx, "original_fee"] = 0.0
             df.at[idx, "type"] = "BUY"
+
+            # Création de la ligne DEPOSIT correspondante
+            deposit_row = row.copy()
+            deposit_row["type"] = "DEPOSIT"
+            deposit_row["amount"] = total_amount
+            deposit_row["original_amount"] = total_amount
+            deposit_row["currency"] = stock_currency
+            deposit_row["price"] = 0.0
+            deposit_row["original_price"] = 0.0
+            deposit_row["shares"] = 0.0
+            deposit_row["fee"] = 0.0
+            deposit_row["original_fee"] = 0.0
+
+            deposits.append(deposit_row)
+
+        if deposits:
+            df = pd.concat([df, pd.DataFrame(deposits)], ignore_index=True)
 
         return df.reset_index(drop=True)
 
@@ -856,17 +916,48 @@ class Transactions:
 
         # Tentative 1: Taux direct (ex: USDEUR=X)
         ticker_direct = f"{from_curr}{to_curr}=X"
-        rate = self.__db_stock.get_rate(date_str, ticker_direct)
+        rate = self.__stock_db.get_rate(date_str, ticker_direct)
         if rate and float(rate) > 0:
             return float(rate)
 
         # Tentative 2: Inverse du taux (ex: 1 / EURUSD=X)
         ticker_inverse = f"{to_curr}{from_curr}=X"
-        rate_inv = self.__db_stock.get_rate(date_str, ticker_inverse)
+        rate_inv = self.__stock_db.get_rate(date_str, ticker_inverse)
         if rate_inv and float(rate_inv) > 0:
             return 1.0 / float(rate_inv)
 
         return 1.0
+
+    def update_bilan(self, portfolio_id: int, portfolio_name: str) -> None:
+        """Coordonne la mise à jour complète des fichiers bilan pour un portefeuille."""
+
+        # Supprime le dossier bilan du compte pour que les données soient à jour
+        path = os.path.join(f"{self.__config['destination_path']}/stock", portfolio_name)
+        if os.path.exists(path):
+            shutil.rmtree(path)
+
+        portfolio_tracker = PortfolioTracker(self.__stock_db, portfolio_id)
+        if not portfolio_tracker.run():
+            return
+
+        file_name = f"{self.__config['destination_path']}/stock/{portfolio_name}/Bilan {portfolio_name}"
+        
+        generate_rapport(
+            self.__stock_db,
+            portfolio_id,
+            portfolio_tracker,
+            f"{file_name}.html",
+        )
+
+        currency = self.__stock_db.get_portfolio_currency(portfolio_id)
+        currency_symbol = None
+        if currency == "EUR":
+            currency_symbol = "€"
+        elif currency == "USD":
+            currency_symbol = "$"
+
+        excel_generator = StockExcelGenerator(portfolio_tracker, portfolio_name, f"{file_name}.xlsx", currency_symbol)
+        excel_generator.generate_report()
 
     @staticmethod
     def __apply_merge_trade_repulic(df: pd.DataFrame) -> pd.DataFrame:
@@ -932,18 +1023,6 @@ class Transactions:
         df = df[~split_mask].copy()
 
         return df.reset_index(drop=True)
-
-    @staticmethod
-    def __apply_free_tax(df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-        df["fee"] = df["fee"].fillna(0) - df["tax"].fillna(0).abs()
-
-        dividend_mask = df["type"].str.upper() == "DIVIDEND"
-        df.loc[dividend_mask, "amount"] = (
-            df.loc[dividend_mask, "amount"].fillna(0) - df.loc[dividend_mask, "fee"].fillna(0).abs()
-        )
-
-        return df
 
     @staticmethod
     def __aggregate_similar_trades(df: pd.DataFrame) -> pd.DataFrame:

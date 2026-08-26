@@ -16,20 +16,54 @@ class StockDB(DatabaseBase):
         super().__init__(db_path)
 
         self._create_database()
-        self.__currencies = ["EURUSD=X"]
+        self.__symbols = [
+            "EURUSD=X",  # Euro / US Dollar
+            "EURCAD=X",  # Euro / Dollar Canadien
+            "EURMXN=X",  # Euro / Peso Mexicain
+            "EURBRL=X",  # Euro / Real Brésilien
+            "EURGBP=X",  # Euro / Livre Sterling
+            "GBPUSD=X",  # Livre Sterling / US Dollar
+            "EURCHF=X",  # Euro / Franc Suisse
+            "EURSEK=X",  # Euro / Couronne Suédoise
+            "EURNOK=X",  # Euro / Couronne Norvégienne
+            "EURDKK=X",  # Euro / Couronne Danoise
+            "EURJPY=X",  # Euro / Yen Japonais
+            "EURHKD=X",  # Euro / Dollar de Hong Kong
+            "EURCNY=X",  # Euro / Yuan Chinois
+            "EURINR=X",  # Euro / Roupie Indienne
+            "EURAUD=X",  # Euro / Dollar Australien
+            "AUDUSD=X",  # Dollar Australien / US Dollar
+            "EURNZD=X",  # Euro / Dollar Néo-Zélandais
+            "NZDUSD=X",  # Dollar Néo-Zélandais / US Dollar
+            "^GSPC",  # S&P 500
+            "^FCHI",  # CAC 40
+            "^IXIC",  # NASDAQ
+            "URTH",  # MSCI World
+        ]
 
-        # Ajoute les données de conversion pour chaque devise
+        # Ajoute les données de conversion pour chaque symbol
         tickers = self.get_tickers()
-        for currency in self.__currencies:
-            if currency not in tickers:
-                df = pd.DataFrame(columns=["symbol"], data=[currency])
+        for symb in self.__symbols:
+            if symb not in tickers:
+                df = pd.DataFrame(columns=["symbol"], data=[symb])
                 extracted_data, isin_ticker_add = fetch_stock_data(self, df)
                 tickers_to_add = [isin_ticker["ticker"] for isin_ticker in isin_ticker_add]
                 self.add_data_tickers(tickers_to_add, extracted_data)
         self.__stock_update()
 
     def get_all_portfolios(self) -> pd.DataFrame:
-        query = "SELECT id, name FROM portfolio ORDER BY id DESC"
+        query = """
+            SELECT 
+                p.id, 
+                p.name, 
+                p.currency, 
+                p.amount,
+                COUNT(pt.id) AS transaction_count
+            FROM portfolio p
+            LEFT JOIN portfolio_transaction pt ON p.id = pt.portfolio_id
+            GROUP BY p.id, p.name, p.currency, p.amount
+            ORDER BY p.id DESC;
+        """
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
 
@@ -37,6 +71,13 @@ class StockDB(DatabaseBase):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT currency FROM portfolio WHERE id = ?", (portfolio_id,))
+            row = cursor.fetchone()
+            return row[0]
+
+    def get_portfolio_name(self, portfolio_id: int) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM portfolio WHERE id = ?", (portfolio_id,))
             row = cursor.fetchone()
             return row[0]
 
@@ -101,6 +142,72 @@ class StockDB(DatabaseBase):
             cursor.execute("SELECT currency FROM stock WHERE ticker = ?", (ticker,))
             res = cursor.fetchone()
             return res[0]
+
+    def get_tickers_prices(self, portfolio_id: int, tickers: list[str], first_date: str) -> pd.DataFrame:
+        placeholders = ",".join(["?"] * len(tickers))
+
+        query = f"""
+            SELECT 
+                sp.date,
+                sp.ticker,
+                sp.close_price,
+                s.currency AS stock_currency,
+                p.currency AS portfolio_currency,
+                fx.close_price AS fx_rate
+            FROM stock_price sp
+            JOIN stock s ON sp.ticker = s.ticker
+            JOIN portfolio p ON p.id = ?
+            LEFT JOIN stock_price fx 
+                   ON fx.ticker = p.currency || s.currency || '=X' 
+                  AND fx.date = sp.date
+            WHERE sp.ticker IN ({placeholders}) 
+              AND sp.date >= ?
+            ORDER BY sp.ticker ASC, sp.date ASC;
+        """
+
+        params = [portfolio_id] + list(tickers) + [first_date]
+
+        with self._get_connection() as conn:
+            df = pd.read_sql_query(query, conn, params=params)
+
+        if df.empty:
+            return pd.DataFrame()
+
+        # Calcul du prix converti : conversion si devises différentes, sinon prix d'origine
+        df["converted_price"] = df.apply(
+            lambda row: (
+                row["close_price"] / row["fx_rate"]
+                if row["stock_currency"] != row["portfolio_currency"] and pd.notna(row["fx_rate"])
+                else row["close_price"]
+            ),
+            axis=1,
+        )
+
+        df["date"] = pd.to_datetime(df["date"])
+        df_pivoted = df.pivot(index="date", columns="ticker", values="converted_price")
+
+        return df_pivoted.ffill()
+
+    def get_stock_splits(self, tickers: list[str], first_date: str) -> pd.DataFrame:
+        """Récupère l'historique des splits pour une liste de tickers à partir d'une date donnée."""
+        if not tickers:
+            return pd.DataFrame()
+
+        placeholders = ",".join(["?"] * len(tickers))
+        query = f"""
+            SELECT 
+                ticker,
+                date,
+                ratio
+            FROM stock_split
+            WHERE ticker IN ({placeholders}) AND date >= ?
+            ORDER BY date ASC;
+        """
+
+        params = list(tickers) + [first_date]
+
+        with self._get_connection() as conn:
+            return pd.read_sql_query(query, conn, params=params)
 
     def get_rate(self, date: str, ticker: str) -> float | None:
         """Récupère le prix de clôture à la date donnée, ou la dernière valeur connue antérieure."""
@@ -200,14 +307,73 @@ class StockDB(DatabaseBase):
             cursor = conn.cursor()
             cursor.executemany(query, data_to_insert)
 
-    def add_transactions(self, transactions: pd.DataFrame) -> None:
+    def get_portfolios(self) -> list[tuple[int, str]]:
+        query = "SELECT id, name FROM portfolio ORDER BY name ASC"
         with self._get_connection() as conn:
-            transactions.to_sql(
-                name="portfolio_transaction",
-                con=conn,
-                if_exists="append",
-                index=False,
+            cursor = conn.cursor()
+            cursor.execute(query)
+            return cursor.fetchall()
+
+    def get_tickers_by_portfolio(self, portfolio_id: int) -> list[tuple[str, str]]:
+        """Récupère les tickers d'un portefeuille en excluant les devises et benchmark."""
+        placeholders = ",".join("?" for _ in self.__symbols)
+        query = f"""
+            SELECT s.ticker, s.company_name
+            FROM portfolio_ticker pt
+            JOIN stock s ON pt.ticker = s.ticker
+            WHERE pt.portfolio_id = ?
+              AND s.ticker NOT IN ({placeholders})
+            ORDER BY s.ticker ASC
+        """
+        params = [portfolio_id] + self.__symbols
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
+    def remove_ticker_from_portfolio(self, portfolio_id: int, ticker: str) -> None:
+        """Retire un ticker d'un portefeuille."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Supprimer l'association du portefeuille (et ses transactions liées en cascade)
+            cursor.execute("DELETE FROM portfolio_ticker WHERE portfolio_id = ? AND ticker = ?", (portfolio_id, ticker))
+
+            # Vérifier s'il reste au moins une liaison dans un autre portefeuille
+            cursor.execute("SELECT COUNT(*) FROM portfolio_ticker WHERE ticker = ?", (ticker,))
+            count = cursor.fetchone()[0]
+
+            # Si plus aucun portefeuille n'utilise ce ticker, suppression globale de la table stock
+            if count == 0:
+                cursor.execute("DELETE FROM stock WHERE ticker = ?", (ticker,))
+
+            conn.commit()
+
+    def add_transactions(self, transactions: pd.DataFrame) -> None:
+        """Insère ou fusionne (UPSERT) les transactions selon les contraintes d'unicité de la BDD."""
+        if transactions.empty:
+            return
+
+        df = transactions.copy()
+        records = df.to_dict(orient="records")
+        query = """
+            INSERT INTO portfolio_transaction (
+                portfolio_id, portfolio_ticker_id, type, date, fx_rate,
+                original_amount, original_price, original_fee, amount, price, fee
+            ) VALUES (
+                :portfolio_id, :portfolio_ticker_id, :type, :date, :fx_rate,
+                :original_amount, :original_price, :original_fee, :amount, :price, :fee
             )
+            ON CONFLICT DO UPDATE SET
+                original_amount = portfolio_transaction.original_amount + excluded.original_amount,
+                original_fee    = portfolio_transaction.original_fee + excluded.original_fee,
+                amount          = COALESCE(portfolio_transaction.amount, 0) + COALESCE(excluded.amount, 0),
+                fee             = COALESCE(portfolio_transaction.fee, 0) + COALESCE(excluded.fee, 0);
+        """
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany(query, records)
+            conn.commit()
 
     def update_transaction(self, updated_data: dict) -> None:
         transaction_id = updated_data.get("transaction_id") or updated_data.get("id")
@@ -290,6 +456,16 @@ class StockDB(DatabaseBase):
         with self._get_connection() as conn:
             conn.cursor().execute("DELETE FROM portfolio WHERE id = ?", (portfolio_id,))
 
+    def update_portfolio_amount(self, portfolio_id: int, amount: float) -> None:
+        query = """
+            UPDATE portfolio
+            SET amount = ?
+            WHERE id = ?;
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (amount, portfolio_id))
+
     def _create_database(self) -> None:
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -332,7 +508,8 @@ class StockDB(DatabaseBase):
                 CREATE TABLE IF NOT EXISTS portfolio (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     name        VARCHAR(100) NOT NULL,
-                    currency    CHAR(3) NOT NULL
+                    currency    CHAR(3) NOT NULL,
+                    amount      NUMERIC(12, 2) NOT NULL DEFAULT 0.00
                 );
 
                 CREATE TABLE IF NOT EXISTS portfolio_ticker (
@@ -372,17 +549,28 @@ class StockDB(DatabaseBase):
                         type IN ('buy', 'sell', 'dividend', 'interest', 'deposit', 'withdrawal')
                     )
                 );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_uniq_cash 
+                ON portfolio_transaction(portfolio_id, date, type) 
+                WHERE type IN ('deposit', 'withdrawal', 'interest');
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_uniq_div 
+                ON portfolio_transaction(portfolio_id, date, type, portfolio_ticker_id) 
+                WHERE type = 'dividend';
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_uniq_trade 
+                ON portfolio_transaction(portfolio_id, date, type, portfolio_ticker_id, price) 
+                WHERE type IN ('buy', 'sell');
             """)
 
     def __stock_update(self) -> None:
         """Met à jour les cours, dividendes et splits d'actions dans la base de données."""
 
-        tickers = self.get_tickers() + self.__currencies
+        tickers = self.get_tickers() + self.__symbols
         if not tickers:
             return
 
         end_date = (datetime.today() - timedelta(days=1)).date()
-
         last_date_query = self.__get_last_date()
 
         if last_date_query:

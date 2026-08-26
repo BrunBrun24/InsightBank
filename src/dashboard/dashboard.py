@@ -1,3 +1,5 @@
+import threading
+
 import customtkinter as ctk
 import pandas as pd
 from PIL import Image
@@ -5,16 +7,18 @@ from PIL import Image
 from accounts.banking.database.banking_db import BankingDB
 from accounts.stock.database.stock_db import StockDB
 from config import load_config
-from dashboard.bank_accounts.chart.chart import Chart
-from dashboard.bank_accounts.excel_report.excel_report import ExcelReport
 from dashboard.bank_accounts.operations.operations import Operations
 from dashboard.configuration.automatisation_cat_sub_cat.automatisation_cat_sub_cat import AutomatisationCatSubCat
 from dashboard.configuration.categories_sub_categories.categories_sub_categories import CategoriesSubCategories
 from dashboard.configuration.configuration import Configuration
+from dashboard.configuration.portfolio_tickers.portfolio_tickers import PortfolioTickers
 from dashboard.home.home import Home
 from dashboard.information.information import Information
 from dashboard.portfolio.transactions.transactions import Transactions
 from dashboard.shared.account import Account
+from dashboard.shared.chart import Chart
+from dashboard.shared.excel_report import ExcelReport
+from utils.loading_popup import LoadingPopup
 
 
 class Dashboard(ctk.CTk):
@@ -25,10 +29,10 @@ class Dashboard(ctk.CTk):
 
         self.__config = load_config()
         self.__theme = self.__config["theme"]
-        self.__db_banking_path = self.__config["database"]["db_banking_path"]
+        self.__banking_db_path = self.__config["database"]["db_banking_path"]
         self.__db_stock_path = self.__config["database"]["db_stock_path"]
-        self.__db_banking = BankingDB(self.__db_banking_path)
-        self.__db_stock = StockDB(self.__db_stock_path)
+        self.__banking_db = BankingDB(self.__banking_db_path)
+        self.__stock_db = StockDB(self.__db_stock_path)
 
         self.__setup_interface()
 
@@ -38,23 +42,26 @@ class Dashboard(ctk.CTk):
         self.__configuration_module = Configuration(self.__main_view, self)
         self.__banking_operations_module = Operations(self.__main_view, self)
         self.__stock_operations_module = Transactions(self.__main_view, self)
-        self.__chart = Chart(self.__main_view, self)
-        self.__excel_report = ExcelReport(self.__main_view, self)
+        self.__bank_chart = Chart(self.__main_view, self, mode="banking")
+        self.__stock_chart = Chart(self.__main_view, self, mode="stock")
+        self.__bank_excel_report = ExcelReport(self.__main_view, self, "banking")
+        self.__stock_excel_report = ExcelReport(self.__main_view, self, "stock")
         self.__information = Information(self.__main_view, self)
         self.__categories_sub_categories = CategoriesSubCategories(self.__main_view, self)
         self.__automatisation_cat_sub_cat = AutomatisationCatSubCat(self.__main_view, self)
+        self.__portfolio_tickers = PortfolioTickers(self.__main_view, self)
 
         self.__setup_navigation_frame()
         self.show_home()
 
     def get_db_banking(self) -> BankingDB:
-        return self.__db_banking
+        return self.__banking_db
 
     def set_db_banking(self, db: BankingDB) -> None:
-        self.__db_banking = db
+        self.__banking_db = db
 
     def get_db_stock(self) -> StockDB:
-        return self.__db_stock
+        return self.__stock_db
 
     def get_config(self) -> dict:
         return self.__config
@@ -89,11 +96,17 @@ class Dashboard(ctk.CTk):
     def show_stock_transactions(self, portfolio_row: pd.Series) -> None:
         self.__stock_operations_module.display(portfolio_row)
 
-    def show_charts(self, bank_account_row: pd.Series) -> None:
-        self.__chart.display(bank_account_row)
+    def show_bank_charts(self, bank_account_row: pd.Series) -> None:
+        self.__bank_chart.display(bank_account_row)
 
-    def show_excel_report(self, bank_account_row: pd.Series) -> None:
-        self.__excel_report.display(bank_account_row)
+    def show_stock_charts(self, stock_account_row: pd.Series) -> None:
+        self.__stock_chart.display(stock_account_row)
+
+    def show_bank_excel_report(self, bank_account_row: pd.Series) -> None:
+        self.__bank_excel_report.display(bank_account_row)
+
+    def show_stock_excel_report(self, stock_account_row: pd.Series) -> None:
+        self.__stock_excel_report.display(stock_account_row)
 
     def show_information(self) -> None:
         self.__information.display()
@@ -103,6 +116,37 @@ class Dashboard(ctk.CTk):
 
     def show_automatisation_cat_sub_cat(self) -> None:
         self.__automatisation_cat_sub_cat.display()
+
+    def show_portfolio_tickers(self) -> None:
+        self.__portfolio_tickers.display()
+
+    def update_bank_bilan(self, bank_account_id: int, bank_account_name: str, callback=None) -> None:
+        loading_win = LoadingPopup(self, "Renommage du compte et génération des bilans...")
+
+        def task():
+            try:
+                self.__banking_operations_module.update_bilan(bank_account_id, bank_account_name)
+            finally:
+                self.after(0, lambda: self.__on_update_bilan_complete(loading_win, callback))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def update_stock_bilan(self, portfolio_id: int, portfolio_name: str, callback=None) -> None:
+        loading_win = LoadingPopup(self, "Renommage du compte et génération des bilans...")
+
+        def task():
+            try:
+                self.__stock_operations_module.update_bilan(portfolio_id, portfolio_name)
+            finally:
+                self.after(0, lambda: self.__on_update_bilan_complete(loading_win, callback))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def __on_update_bilan_complete(self, loading_win: LoadingPopup, callback=None) -> None:
+        if loading_win and loading_win.winfo_exists():
+            loading_win.close()
+        if callback:
+            callback()
 
     def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
         """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""

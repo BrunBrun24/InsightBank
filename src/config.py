@@ -9,6 +9,7 @@ def load_config() -> dict:
         default_config = {
             "destination_path": "exports",
             "smart_categorization_enabled": "true",
+            "benchmark": "^GSPC",
             "database": {
                 "db_banking_path": "data/bank_accounts.db",
                 "db_stock_path": "data/stock.db",

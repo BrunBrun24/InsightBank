@@ -23,8 +23,8 @@ class FinancialChart:
     """
 
     def __init__(self, db_banking: BankingDB, bank_account_name: str) -> None:
-        self.__db_banking = db_banking
-        self.__root_path = os.path.join(load_config()["destination_path"], bank_account_name)
+        self.__banking_db = db_banking
+        self.__root_path = os.path.join(load_config()["destination_path"], "bank_account", bank_account_name)
         self.__file_highcharts = []
 
         os.makedirs(self.__root_path, exist_ok=True)
@@ -41,7 +41,7 @@ class FinancialChart:
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
         """
 
-        years_data = self.__db_banking.get_categorized_operations_by_year(bank_account_id)
+        years_data = self.__banking_db.get_categorized_operations_by_year(bank_account_id)
 
         all_years_incomes = []
         all_years_expenses = []
@@ -126,8 +126,8 @@ class FinancialChart:
         """
 
         # 1. Récupération dynamique des catégories de revenus
-        # On suppose que self.__db_banking est ton instance de BankingDB
-        incomes_categories, _ = self.__db_banking.get_category_lists()
+        # On suppose que self.__banking_db est ton instance de BankingDB
+        incomes_categories, _ = self.__banking_db.get_category_lists()
 
         # Génération d'un ID unique pour éviter les conflits si plusieurs graphiques
         graph_id = "sankey_" + str(uuid.uuid4()).replace("-", "_")
@@ -352,7 +352,7 @@ class FinancialChart:
 
         months_labels = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 
-        incomes_list, expenses_list = self.__db_banking.get_category_lists()
+        incomes_list, expenses_list = self.__banking_db.get_category_lists()
 
         incomes_df = incomes_expenses_df[incomes_expenses_df["category"].isin(incomes_list)]
         expenses_df = incomes_expenses_df[incomes_expenses_df["category"].isin(expenses_list)]
@@ -743,7 +743,7 @@ class FinancialChart:
         """
 
         # 1. Récupération des catégories depuis la DB
-        incomes_categories, _ = self.__db_banking.get_category_lists()
+        incomes_categories, _ = self.__banking_db.get_category_lists()
 
         incomes_expenses_df["operation_date"] = pd.to_datetime(incomes_expenses_df["operation_date"])
         incomes_expenses_df["year"] = incomes_expenses_df["operation_date"].dt.year

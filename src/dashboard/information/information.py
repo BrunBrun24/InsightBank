@@ -49,10 +49,16 @@ class Information:
             "src/static/img/help_previews/stock_import_trade_republic_3.png",
         ]
 
-        text_bourse = (
+        text_bourse_trade_republic_1 = (
             "Pour suivre vos investissements et vos transactions boursières :\n\n"
             "1. Importation Trade Republic : Dans l'application mobile, allez dans Profil > Relevés > "
             "Exportation de transactions, sélectionnez votre période puis cliquez sur 'Créer' :\n"
+        )
+
+        text_bourse_trade_republic_2 = (
+            "Pour que votre portefeuille soit exact, veuillez vérifier et éventuellement modifier les transactions suivantes :\n"
+            "   • Pour toute transaction exécutée manuellement (hors plan d'investissement), ajoutez 1 € dans la colonne 'Montant'.\n"
+            "   • Pour les cadeaux reçus, ajoutez les dépôts nets (le montant investi directement, sans frais)."
         )
 
         text_bourse_custom = (
@@ -71,7 +77,8 @@ class Information:
             scroll_container,
             title="Bourse - Gestion du Portefeuille",
             icon_path="src/static/img/icons/stock.png",
-            text_tr=text_bourse,
+            text_tr1=text_bourse_trade_republic_1,
+            text_tr2=text_bourse_trade_republic_2,
             tr_paths=trade_republic_steps,
             text_custom=text_bourse_custom,
             custom_preview_path="src/static/img/help_previews/stock_transactions.png",
@@ -81,10 +88,11 @@ class Information:
             scroll_container,
             title="Configuration",
             text=(
-                "Personnalisez le traitement de vos flux financiers dans le menu 'Configuration' :\n\n"
-                "• Architecture : Modifiez, ajoutez ou supprimez vos catégories et sous-catégories de dépenses/revenus.\n\n"
-                "• Automatisation : Créez des règles d'attribution automatique basées sur le libellé des transactions "
-                "afin de catégoriser automatiquement vos nouveaux imports sans effort manuel."
+                "Personnalisez le traitement de vos flux financiers et de vos investissements dans le menu 'Configuration' :\n\n"
+                "• Catégories et Sous-Catégories : Modifiez, ajoutez ou supprimez vos catégories pour classer précisément vos revenus et dépenses.\n\n"
+                "• Automatisation : Créez des règles d'attribution automatique basées sur le libellé des opérations afin d'importer et catégoriser vos flux sans effort manuel.\n\n"
+                "• Titres : Gérez la composition de vos portefeuilles en ajoutant ou en supprimant les entreprises et titres financiers associés.\n\n"
+                "• Benchmark : Définissez votre indice boursier de référence (S&P 500, NASDAQ, MSCI World, CAC 40) pour comparer la performance de vos investissements."
             ),
             icon_path="src/static/img/icons/edit.png",
         )
@@ -145,7 +153,8 @@ class Information:
         container: ctk.CTkFrame,
         title: str,
         icon_path: str,
-        text_tr: str,
+        text_tr1: str,
+        text_tr2: str,
         tr_paths: list[str],
         text_custom: str,
         custom_preview_path: str,
@@ -169,10 +178,9 @@ class Information:
             text_color=self.__theme["blue_03"]["fg_color"],
         ).pack(side="left")
 
-        # 🔧 FIX : Partie Trade Republic (fill="x" + suppression wraplength)
         ctk.CTkLabel(
             section_frame,
-            text=text_tr,
+            text=text_tr1,
             font=("Arial", 14),
             justify="left",
             anchor="w",
@@ -181,6 +189,14 @@ class Information:
         # Conteneur des 3 photos Trade Republic agrandies
         tr_row_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
         tr_row_frame.pack(anchor="w", padx=35, pady=(5, 15))
+
+        ctk.CTkLabel(
+            section_frame,
+            text=text_tr2,
+            font=("Arial", 14),
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", anchor="w", padx=25, pady=(5, 10))
 
         target_h = 420
         for path in tr_paths:
@@ -192,7 +208,6 @@ class Information:
             img_lbl = ctk.CTkLabel(tr_row_frame, image=ctk_img, text="")
             img_lbl.pack(side="left", padx=(0, 20))
 
-        # 🔧 FIX : Partie Format Personnalisé (fill="x" + suppression wraplength)
         ctk.CTkLabel(
             section_frame,
             text=text_custom,

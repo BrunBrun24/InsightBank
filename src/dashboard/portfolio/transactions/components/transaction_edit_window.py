@@ -28,8 +28,8 @@ class TransactionEditWindow(ctk.CTkToplevel):
         parent: ctk.CTkFrame | ctk.CTk | ctk.CTkToplevel,
         db,
         portfolio_id: int,
+        on_save_callback: callable,
         transaction: dict | None = None,
-        on_save_callback: dict | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -53,22 +53,19 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
         self._validate_numeric_cmd = self.register(self.__validate_numeric_input)
 
-        # Variables réactives
-        self.__amount_orig_var = ctk.StringVar(value="0.00")
-        self.__price_orig_var = ctk.StringVar(value="0.00")
-        self.__fee_orig_var = ctk.StringVar(value="0.00")
+        # Variables réactives - Initialisées à 0
+        self.__amount_orig_var = ctk.StringVar(value="0")
+        self.__price_orig_var = ctk.StringVar(value="0")
+        self.__fee_orig_var = ctk.StringVar(value="0")
 
         self.__rate_var = ctk.StringVar(value="1.0000")
 
-        self.__amount_port_var = ctk.StringVar(value="0.00")
-        self.__price_port_var = ctk.StringVar(value="0.00")
-        self.__fee_port_var = ctk.StringVar(value="0.00")
-
-        # Liste pour conserver les identifiants de trace actifs
-        self.__trace_ids = []
-        self.__bind_variable_traces()
+        self.__amount_port_var = ctk.StringVar(value="0")
+        self.__price_port_var = ctk.StringVar(value="0")
+        self.__fee_port_var = ctk.StringVar(value="0")
 
         self.__setup_ui()
+        self.__bind_variable_traces()
         center_window_on_parent(self, parent)
 
         if self.__is_edit_mode:
@@ -101,7 +98,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
         # Sélection du Type d'opération
         ctk.CTkLabel(container, text="Type d'opération *", anchor="w").pack(fill="x")
-        self.__operation_var = ctk.StringVar(value="Achat")
+        self.__operation_var = ctk.StringVar(value="Dépôt")
         self.__operation_selector = ctk.CTkOptionMenu(
             container,
             values=list(self.OPERATIONS_MAP.keys()),
@@ -149,9 +146,9 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
         self.__lbl_rate = ctk.CTkLabel(self.__f_rate, text="Taux de change", anchor="w")
         self.__lbl_rate.pack(fill="x")
-        entry_rate = ctk.CTkEntry(self.__f_rate, textvariable=self.__rate_var)
-        entry_rate.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_rate.pack(fill="x")
+        self.__entry_rate = ctk.CTkEntry(self.__f_rate, textvariable=self.__rate_var)
+        self.__entry_rate.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_rate.pack(fill="x")
 
         # Conteneur principal des champs dynamiques
         self.__fields_container = ctk.CTkFrame(container, fg_color="transparent")
@@ -165,25 +162,25 @@ class TransactionEditWindow(ctk.CTkToplevel):
         self.__f_amount_orig.grid(row=0, column=0, padx=(0, 5), sticky="ew")
         self.__lbl_amount_orig = ctk.CTkLabel(self.__f_amount_orig, text="Montant *", anchor="w")
         self.__lbl_amount_orig.pack(fill="x")
-        entry_amount_orig = ctk.CTkEntry(self.__f_amount_orig, textvariable=self.__amount_orig_var)
-        entry_amount_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_amount_orig.pack(fill="x")
+        self.__entry_amount_orig = ctk.CTkEntry(self.__f_amount_orig, textvariable=self.__amount_orig_var)
+        self.__entry_amount_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_amount_orig.pack(fill="x")
 
         self.__f_price_orig = ctk.CTkFrame(self.__row_orig, fg_color="transparent")
         self.__f_price_orig.grid(row=0, column=1, padx=5, sticky="ew")
         self.__lbl_price_orig = ctk.CTkLabel(self.__f_price_orig, text="Prix unitaire *", anchor="w")
         self.__lbl_price_orig.pack(fill="x")
-        entry_price_orig = ctk.CTkEntry(self.__f_price_orig, textvariable=self.__price_orig_var)
-        entry_price_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_price_orig.pack(fill="x")
+        self.__entry_price_orig = ctk.CTkEntry(self.__f_price_orig, textvariable=self.__price_orig_var)
+        self.__entry_price_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_price_orig.pack(fill="x")
 
         self.__f_fee_orig = ctk.CTkFrame(self.__row_orig, fg_color="transparent")
         self.__f_fee_orig.grid(row=0, column=2, padx=(5, 0), sticky="ew")
         self.__lbl_fee_orig = ctk.CTkLabel(self.__f_fee_orig, text="Frais", anchor="w")
         self.__lbl_fee_orig.pack(fill="x")
-        entry_fee_orig = ctk.CTkEntry(self.__f_fee_orig, textvariable=self.__fee_orig_var)
-        entry_fee_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_fee_orig.pack(fill="x")
+        self.__entry_fee_orig = ctk.CTkEntry(self.__f_fee_orig, textvariable=self.__fee_orig_var)
+        self.__entry_fee_orig.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_fee_orig.pack(fill="x")
 
         # Ligne 2 : Champs convertis dans la devise du portefeuille
         self.__row_port = ctk.CTkFrame(self.__fields_container, fg_color="transparent")
@@ -193,25 +190,25 @@ class TransactionEditWindow(ctk.CTkToplevel):
         self.__f_amount_port.grid(row=0, column=0, padx=(0, 5), sticky="ew")
         self.__lbl_amount_port = ctk.CTkLabel(self.__f_amount_port, text="Montant", anchor="w")
         self.__lbl_amount_port.pack(fill="x")
-        entry_amount_port = ctk.CTkEntry(self.__f_amount_port, textvariable=self.__amount_port_var)
-        entry_amount_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_amount_port.pack(fill="x")
+        self.__entry_amount_port = ctk.CTkEntry(self.__f_amount_port, textvariable=self.__amount_port_var)
+        self.__entry_amount_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_amount_port.pack(fill="x")
 
         self.__f_price_port = ctk.CTkFrame(self.__row_port, fg_color="transparent")
         self.__f_price_port.grid(row=0, column=1, padx=5, sticky="ew")
         self.__lbl_price_port = ctk.CTkLabel(self.__f_price_port, text="Prix unitaire", anchor="w")
         self.__lbl_price_port.pack(fill="x")
-        entry_price_port = ctk.CTkEntry(self.__f_price_port, textvariable=self.__price_port_var)
-        entry_price_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_price_port.pack(fill="x")
+        self.__entry_price_port = ctk.CTkEntry(self.__f_price_port, textvariable=self.__price_port_var)
+        self.__entry_price_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_price_port.pack(fill="x")
 
         self.__f_fee_port = ctk.CTkFrame(self.__row_port, fg_color="transparent")
         self.__f_fee_port.grid(row=0, column=2, padx=(5, 0), sticky="ew")
         self.__lbl_fee_port = ctk.CTkLabel(self.__f_fee_port, text="Frais", anchor="w")
         self.__lbl_fee_port.pack(fill="x")
-        entry_fee_port = ctk.CTkEntry(self.__f_fee_port, textvariable=self.__fee_port_var)
-        entry_fee_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
-        entry_fee_port.pack(fill="x")
+        self.__entry_fee_port = ctk.CTkEntry(self.__f_fee_port, textvariable=self.__fee_port_var)
+        self.__entry_fee_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
+        self.__entry_fee_port.pack(fill="x")
 
         self._refresh_stocks_list()
         self.__render_dynamic_fields()
@@ -238,36 +235,15 @@ class TransactionEditWindow(ctk.CTkToplevel):
             self.__recalculate_from_orig()
 
     def __bind_variable_traces(self) -> None:
-        """Attache les callbacks aux StringVar et conserve leurs identifiants."""
-        self.__unbind_variable_traces()
+        """Attache l'événement KeyRelease aux entrées pour recalculer immédiatement au 1er chiffre."""
+        self.__entry_amount_orig.bind("<KeyRelease>", lambda e: self.__recalculate_from_orig())
+        self.__entry_price_orig.bind("<KeyRelease>", lambda e: self.__recalculate_from_orig())
+        self.__entry_fee_orig.bind("<KeyRelease>", lambda e: self.__recalculate_from_orig())
+        self.__entry_rate.bind("<KeyRelease>", lambda e: self.__recalculate_from_orig())
 
-        t1 = self.__amount_orig_var.trace_add("write", lambda *args: self.__recalculate_from_orig())
-        t2 = self.__price_orig_var.trace_add("write", lambda *args: self.__recalculate_from_orig())
-        t3 = self.__fee_orig_var.trace_add("write", lambda *args: self.__recalculate_from_orig())
-        t4 = self.__rate_var.trace_add("write", lambda *args: self.__recalculate_from_orig())
-
-        t5 = self.__amount_port_var.trace_add("write", lambda *args: self.__recalculate_from_port())
-        t6 = self.__price_port_var.trace_add("write", lambda *args: self.__recalculate_from_port())
-        t7 = self.__fee_port_var.trace_add("write", lambda *args: self.__recalculate_from_port())
-
-        self.__trace_ids = [
-            (self.__amount_orig_var, t1),
-            (self.__price_orig_var, t2),
-            (self.__fee_orig_var, t3),
-            (self.__rate_var, t4),
-            (self.__amount_port_var, t5),
-            (self.__price_port_var, t6),
-            (self.__fee_port_var, t7),
-        ]
-
-    def __unbind_variable_traces(self) -> None:
-        """Détache proprement les callbacks de trace pour éviter les erreurs de widgets détruits."""
-        for var, trace_id in self.__trace_ids:
-            try:
-                var.trace_remove("write", trace_id)
-            except Exception:
-                pass
-        self.__trace_ids.clear()
+        self.__entry_amount_port.bind("<KeyRelease>", lambda e: self.__recalculate_from_port())
+        self.__entry_price_port.bind("<KeyRelease>", lambda e: self.__recalculate_from_port())
+        self.__entry_fee_port.bind("<KeyRelease>", lambda e: self.__recalculate_from_port())
 
     def __render_dynamic_fields(self) -> None:
         """Affiche ou masque les conteneurs pré-existants en fonction du contexte."""
@@ -461,6 +437,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
         stock_currency = self.__db.get_currency(selected_ticker)
         if stock_currency == self.__portfolio_currency:
             self.__rate_var.set("1.0000")
+            self.__recalculate_from_orig()
             return
 
         try:
@@ -483,6 +460,8 @@ class TransactionEditWindow(ctk.CTkToplevel):
         except Exception:
             self.__rate_var.set("1.0000")
 
+        self.__recalculate_from_orig()
+
     def __update_stock_price(self) -> None:
         """Récupère automatiquement le prix unitaire de l'action à la date sélectionnée."""
 
@@ -500,13 +479,14 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
             if price is not None and float(price) > 0:
                 self.__price_orig_var.set(f"{float(price):.2f}")
+                self.__recalculate_from_orig()
         except Exception:
             pass
 
     def __parse_float(self, val_str: str) -> float | None:
         """Parse une chaîne en float de manière tolérante aux saisies partielles."""
         if not val_str:
-            return 0.0
+            return None
         cleaned = val_str.replace(",", ".").strip()
         if cleaned in [".", ",", ""]:
             return None
@@ -526,27 +506,32 @@ class TransactionEditWindow(ctk.CTkToplevel):
         price_orig = self.__parse_float(self.__price_orig_var.get())
         fee_orig = self.__parse_float(self.__fee_orig_var.get())
 
-        if rate is None or original_amount is None or rate <= 0:
+        if rate is None or rate <= 0:
             return
 
         try:
             self.__is_recalculating = True
 
-            amount_converted = round(original_amount / rate, 2)
-            price_converted = round(price_orig / rate, 4) if price_orig is not None else 0.0
-            fee_converted = round(fee_orig / rate, 2) if fee_orig is not None else 0.0
-
-            def update_vars():
-                self.__unbind_variable_traces()
+            # Chaque champ est converti de manière indépendante
+            if original_amount is not None:
+                amount_converted = original_amount / rate
                 self.__amount_port_var.set(f"{amount_converted:.2f}")
-                self.__price_port_var.set(f"{price_converted:.2f}")
+            else:
+                self.__amount_port_var.set("0")
+
+            if price_orig is not None:
+                price_converted = price_orig / rate
+                self.__price_port_var.set(f"{price_converted:.4f}" if price_converted < 1 else f"{price_converted:.2f}")
+            else:
+                self.__price_port_var.set("0")
+
+            if fee_orig is not None:
+                fee_converted = fee_orig / rate
                 self.__fee_port_var.set(f"{fee_converted:.2f}")
-                self.__bind_variable_traces()
-                self.__is_recalculating = False
+            else:
+                self.__fee_port_var.set("0")
 
-            self.after_idle(update_vars)
-
-        except Exception:
+        finally:
             self.__is_recalculating = False
 
     def __recalculate_from_port(self) -> None:
@@ -560,27 +545,32 @@ class TransactionEditWindow(ctk.CTkToplevel):
         price_port = self.__parse_float(self.__price_port_var.get())
         fee_port = self.__parse_float(self.__fee_port_var.get())
 
-        if rate is None or amount_port is None:
+        if rate is None or rate <= 0:
             return
 
         try:
             self.__is_recalculating = True
 
-            original_amount = round(amount_port * rate, 2)
-            price_orig = round(price_port * rate, 4) if price_port is not None else 0.0
-            fee_orig = round(fee_port * rate, 2) if fee_port is not None else 0.0
-
-            def update_vars():
-                self.__unbind_variable_traces()
+            # Chaque champ est converti de manière indépendante
+            if amount_port is not None:
+                original_amount = amount_port * rate
                 self.__amount_orig_var.set(f"{original_amount:.2f}")
-                self.__price_orig_var.set(f"{price_orig:.2f}")
+            else:
+                self.__amount_orig_var.set("0")
+
+            if price_port is not None:
+                price_orig = price_port * rate
+                self.__price_orig_var.set(f"{price_orig:.4f}" if price_orig < 1 else f"{price_orig:.2f}")
+            else:
+                self.__price_orig_var.set("0")
+
+            if fee_port is not None:
+                fee_orig = fee_port * rate
                 self.__fee_orig_var.set(f"{fee_orig:.2f}")
-                self.__bind_variable_traces()
-                self.__is_recalculating = False
+            else:
+                self.__fee_orig_var.set("0")
 
-            self.after_idle(update_vars)
-
-        except Exception:
+        finally:
             self.__is_recalculating = False
 
     def __handle_save(self) -> None:
@@ -602,16 +592,29 @@ class TransactionEditWindow(ctk.CTkToplevel):
             portfolio_ticker_id = ticker_id_map.get(ticker)
 
         try:
-            original_amount = round(float(self.__amount_orig_var.get().replace(",", ".")), 2)
-            original_fee = round(float(self.__fee_orig_var.get().replace(",", ".")), 2)
+            raw_orig_amount = self.__amount_orig_var.get().replace(",", ".").strip()
+            original_amount = round(float(raw_orig_amount), 2) if raw_orig_amount else 0.0
+
+            raw_fee = self.__fee_orig_var.get().replace(",", ".").strip()
+            original_fee = round(float(raw_fee), 2) if raw_fee else 0.0
 
             if original_amount <= 0:
                 messagebox.showerror("Erreur", "Le montant doit être supérieur à zéro.")
                 return
 
-            price_orig = (
-                round(float(self.__price_orig_var.get().replace(",", ".")), 2) if type_op in ["buy", "sell"] else None
-            )
+            # Gestion stricte du prix unitaire
+            price_orig = None
+            if type_op in ["buy", "sell"]:
+                raw_price = self.__price_orig_var.get().replace(",", ".").strip()
+                if not raw_price:
+                    messagebox.showerror("Erreur", "Le prix unitaire est obligatoire.")
+                    return
+                price_orig = round(float(raw_price), 2)
+
+                if price_orig <= 0:
+                    messagebox.showerror("Erreur", "Le prix unitaire doit être supérieur à zéro.")
+                    return
+
             rate = float(self.__rate_var.get().replace(",", "."))
             amount_converted = original_amount
             price_converted = price_orig
@@ -630,19 +633,20 @@ class TransactionEditWindow(ctk.CTkToplevel):
             )
 
             if type_op in ["buy", "sell"]:
-                if price_orig <= 0:
-                    messagebox.showerror("Erreur", "Le prix unitaire doit être supérieur à zéro.")
-                    return
-
                 qty = round(original_amount / price_orig, 6)
 
             if is_different_currency:
-                amount_converted = round(float(self.__amount_port_var.get().replace(",", ".")), 2)
+                raw_port_amount = self.__amount_port_var.get().replace(",", ".").strip()
+                amount_converted = round(float(raw_port_amount), 2) if raw_port_amount else 0.0
+
                 if type_op in ["buy", "sell"]:
-                    price_converted = round(float(self.__price_port_var.get().replace(",", ".")), 2)
+                    raw_port_price = self.__price_port_var.get().replace(",", ".").strip()
+                    price_converted = round(float(raw_port_price), 2) if raw_port_price else 0.0
                 else:
                     price_converted = None
-                fee_converted = round(float(self.__fee_port_var.get().replace(",", ".")), 2)
+
+                raw_port_fee = self.__fee_port_var.get().replace(",", ".").strip()
+                fee_converted = round(float(raw_port_fee), 2) if raw_port_fee else 0.0
 
             data = {
                 "portfolio_id": self.__portfolio_id,

@@ -3,6 +3,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 import yfinance as yf
 
+from accounts.stock.importers.fetch_stock import fetch_stock_data
 from utils.window_utils import center_window_on_parent
 
 
@@ -16,11 +17,12 @@ class AddStockWindow(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
-        self.__db_stock = db_stock
+        self.__stock_db = db_stock
         self.__portfolio_id = portfolio_id
         self.__on_stock_added = on_stock_added_callback
         self.__selected_stock = None
         self.__search_results_map = {}
+        self.__search_timer = None  # ID du timer pour le debounce
 
         self.__setup_ui()
         center_window_on_parent(self, parent)
@@ -59,9 +61,20 @@ class AddStockWindow(ctk.CTkToplevel):
         self.__add_btn.pack(side="right", expand=True)
 
     def __on_search_change(self, event) -> None:
+        """Gère la frappe au clavier en réinitialisant le délai de 2 secondes."""
+        if self.__search_timer is not None:
+            self.after_cancel(self.__search_timer)
+
+        # Lance la recherche seulement après 750 ms d'inactivité
+        self.__search_timer = self.after(750, self.__execute_search)
+
+    def __execute_search(self) -> None:
+        """Effectue la requête auprès de Yahoo Finance."""
         query = self.__search_entry.get().strip()
         if len(query) < 2:
             return
+
+        self.__info_label.configure(text="Recherche en cours...", text_color="gray")
 
         try:
             search_engine = yf.Search(query, max_results=10)
@@ -149,9 +162,13 @@ class AddStockWindow(ctk.CTkToplevel):
 
         try:
             tickers_list = [self.__selected_stock["ticker"]]
-            self.__db_stock.add_data_tickers(tickers_list)
-            self.__db_stock.add_tickers_in_portfolio_ticker(self.__portfolio_id, tickers_list)
-            self.__on_stock_added(self.__selected_stock["ticker"])
+            extracted_data, _ = fetch_stock_data(self.__stock_db, tickers_list)
+            self.__stock_db.add_data_tickers(tickers_list, extracted_data)
+            self.__stock_db.add_tickers_in_portfolio_ticker(self.__portfolio_id, tickers_list)
+            try:
+                self.__on_stock_added(self.__selected_stock["ticker"])
+            except:
+                self.__on_stock_added()
             self.destroy()
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Impossible d'ajouter le titre : {e}")
+        except Exception:
+            messagebox.showerror("Erreur", "Impossible d'ajouter le titre")

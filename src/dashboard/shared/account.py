@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import shutil
 from tkinter import messagebox
 from typing import Literal
@@ -12,6 +13,8 @@ from utils.window_utils import center_window_on_parent
 
 class Account:
     """Vue générique permettant d'afficher des comptes bancaires ou des portefeuilles boursiers."""
+
+    PATTERN_VALIDE = r"^[a-zA-Z0-9 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ_\-]+$"
 
     def __init__(self, master: ctk.CTkFrame, controller, mode: Literal["banking", "stock"] = "banking") -> None:
         self.__master = master
@@ -108,7 +111,7 @@ class Account:
                     "fg_color": self.__theme["blue_03"]["fg_color"],
                     "hover_color": self.__theme["blue_03"]["fg_color"],
                     "icon_path": "src/static/img/icons/chart.png",
-                    "cmd": lambda: self.__controller.show_charts(bank_account_row),
+                    "cmd": lambda: self.__controller.show_bank_charts(bank_account_row),
                 },
                 {
                     "name": "Rapports",
@@ -116,7 +119,7 @@ class Account:
                     "fg_color": self.__theme["magenta"]["fg_color"],
                     "hover_color": self.__theme["magenta"]["hover_color"],
                     "icon_path": "src/static/img/icons/file.png",
-                    "cmd": lambda: self.__controller.show_excel_report(bank_account_row),
+                    "cmd": lambda: self.__controller.show_bank_excel_report(bank_account_row),
                 },
             ]
         else:
@@ -131,11 +134,11 @@ class Account:
                 },
                 {
                     "name": "Analyses",
-                    "desc": "Visualiser la santé\nde vos finances.",
+                    "desc": "Visualiser la progression\nde votre portefeuille.",
                     "fg_color": self.__theme["blue_03"]["fg_color"],
                     "hover_color": self.__theme["blue_03"]["fg_color"],
                     "icon_path": "src/static/img/icons/chart.png",
-                    "cmd": lambda: self.__controller.show_charts(bank_account_row),
+                    "cmd": lambda: self.__controller.show_stock_charts(bank_account_row),
                 },
                 {
                     "name": "Rapports",
@@ -143,7 +146,7 @@ class Account:
                     "fg_color": self.__theme["magenta"]["fg_color"],
                     "hover_color": self.__theme["magenta"]["hover_color"],
                     "icon_path": "src/static/img/icons/file.png",
-                    "cmd": lambda: self.__controller.show_excel_report(bank_account_row),
+                    "cmd": lambda: self.__controller.show_stock_excel_report(bank_account_row),
                 },
             ]
 
@@ -179,27 +182,22 @@ class Account:
             ).pack(pady=(0, 5))
 
         else:
-            gain_loss = round(random.uniform(-1500.0, 3500.0), 2)
-            pct_change = round(random.uniform(-15.0, 45.0), 2)
-
-            sign = "+" if gain_loss >= 0 else ""
-            formatted_gain = f"{sign}{gain_loss:,.2f}".replace(",", " ").replace(".", ",") + " €"
-            formatted_pct = f"({sign}{pct_change:.2f} %)"
-
-            gain_color = self.__theme["green"]["fg_color"] if gain_loss >= 0 else self.__theme["red"]["fg_color"]
+            total_amount = row["amount"]
+            currency = "€" if row["currency"] == "EUR" else "$"
+            formatted_balance = f"{total_amount:,.2f}".replace(",", " ").replace(".", ",") + f" {currency}"
+            balance_color = self.__theme["green"]["fg_color"] if total_amount >= 0 else self.__theme["red"]["fg_color"]
 
             ctk.CTkLabel(
                 card,
-                text=formatted_gain,
+                text=formatted_balance,
                 font=("Arial", 24, "bold"),
-                text_color=gain_color,
+                text_color=balance_color,
             ).pack(pady=(8, 0))
 
             ctk.CTkLabel(
                 card,
-                text=formatted_pct,
-                font=("Arial", 14, "bold"),
-                text_color=gain_color,
+                text=f"{row['transaction_count']} transactions enregistrées",
+                font=("Arial", 12, "italic"),
             ).pack(pady=(0, 8))
 
         # Conteneur des actions
@@ -255,6 +253,12 @@ class Account:
 
             name = dialog.get_input()
             if name:
+                if not re.match(self.PATTERN_VALIDE, name):
+                    messagebox.showwarning(
+                        "Nom invalide", "Le nom ne doit pas contenir de symboles ou de caractères spéciaux."
+                    )
+                    return
+
                 try:
                     self.__db.add_bank_account(name)
                     self.display()
@@ -291,6 +295,14 @@ class Account:
             def on_confirm(event=None) -> None:
                 input_name = name_entry.get().strip()
                 if input_name:
+                    if not re.match(self.PATTERN_VALIDE, input_name):
+                        messagebox.showwarning(
+                            "Nom invalide",
+                            "Le nom ne doit pas contenir de symboles ou de caractères spéciaux.",
+                            parent=dialog,
+                        )
+                        return
+
                     result["name"] = input_name
                     result["currency"] = currency_menu.get()
                     dialog.destroy()
@@ -324,17 +336,12 @@ class Account:
 
     def __handle_delete(self, item_id: int, item_name: str) -> None:
         if messagebox.askyesno("Confirmation", f"Supprimer '{item_name}' ?\nCette action est irréversible."):
-            try:
-                if self.__mode == "banking":
-                    path = os.path.join(self.__config["destination_path"], item_name)
-                    if os.path.exists(path):
-                        shutil.rmtree(path)
-                    self.__db.delete_bank_account(item_id)
-                else:
-                    self.__db.delete_portfolio(item_id)
-                self.display()
-            except Exception as e:
-                messagebox.showerror("Erreur de suppression", str(e))
+            self.__delete_directory(item_name)
+            if self.__mode == "banking":
+                self.__db.delete_bank_account(item_id)
+            else:
+                self.__db.delete_portfolio(item_id)
+            self.display()
 
     def __handle_edit(self, item_id: int, old_name: str) -> None:
         dialog = ctk.CTkInputDialog(text=f"Nouveau nom pour '{old_name}' :", title="Renommer")
@@ -342,12 +349,35 @@ class Account:
         dialog.transient(self.__master.winfo_toplevel())
 
         new_name = dialog.get_input()
+
         if new_name and new_name != old_name:
+            if not re.match(self.PATTERN_VALIDE, new_name):
+                messagebox.showwarning(
+                    "Nom invalide", "Le nom ne doit pas contenir de symboles ou de caractères spéciaux."
+                )
+                return
+
             try:
                 if self.__mode == "banking":
                     self.__db.update_bank_account_name(item_id, new_name)
+                    self.__controller.update_bank_bilan(item_id, new_name, self.display)
                 else:
                     self.__db.update_portfolio_name(item_id, new_name)
+                    self.__controller.update_stock_bilan(item_id, new_name, self.display)
+                self.__delete_directory(old_name)
                 self.display()
             except Exception as e:
                 messagebox.showerror("Erreur", str(e))
+
+    def __delete_directory(self, item_name: str):
+        try:
+            if self.__mode == "banking":
+                path = os.path.join(self.__config["destination_path"], "bank_account", item_name)
+                if os.path.exists(path):
+                    shutil.rmtree(path)
+            else:
+                path = os.path.join(self.__config["destination_path"], "stock", item_name)
+                if os.path.exists(path):
+                    shutil.rmtree(path)
+        except Exception as e:
+            messagebox.showerror("Erreur de suppression", str(e))

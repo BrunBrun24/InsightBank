@@ -10,11 +10,11 @@ import pandas as pd
 from accounts.banking.database.banking_db import BankingDB
 from accounts.banking.importers.data_extractor import DataExtractor
 from accounts.banking.processing.categorizer import Categorizer
-from accounts.banking.reporting.excel_generator import ExcelGenerator as BnpParibasExcelReportGenerator
+from accounts.banking.reporting.excel_generator import ExcelGenerator
 from accounts.banking.visualization.financial_chart import FinancialChart
 from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
 from utils.data_utils import remove_accents
-from utils.loading_page import LoadingPopup
+from utils.loading_popup import LoadingPopup
 
 
 class Operations:
@@ -23,8 +23,8 @@ class Operations:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__db_banking_path = self.__config["database"]["db_banking_path"]
-        self.__db_banking = BankingDB(self.__db_banking_path)
+        self.__banking_db_path = self.__config["database"]["db_banking_path"]
+        self.__banking_db = BankingDB(self.__banking_db_path)
         self.__sort_column = "operation_date"
         self.__sort_ascending = False
 
@@ -73,7 +73,7 @@ class Operations:
             command=lambda: self.__handle_add_operation(bank_account_row),
         ).pack(side="left", padx=5)
 
-        operations = self.__db_banking.get_unprocessed_raw_operations(bank_account_row["id"])
+        operations = self.__banking_db.get_unprocessed_raw_operations(bank_account_row["id"])
         ctk.CTkButton(
             account_actions_bar,
             text="Catégoriser les opérations",
@@ -101,7 +101,7 @@ class Operations:
         items_per_page = 21
 
         try:
-            df = self.__db_banking.get_operations_by_bank_account(bank_account_id)
+            df = self.__banking_db.get_operations_by_bank_account(bank_account_id)
 
             if not df.empty:
                 # Logique de Tri et Pagination
@@ -328,7 +328,7 @@ class Operations:
 
         win = OperationEditWindow(
             parent=self.__master,
-            db=self.__db_banking,
+            db=self.__banking_db,
             bank_account_id=bank_account_row["id"],
             operation=default_op,
             on_save_callback=lambda data: self.__process_add(data, bank_account_row),
@@ -337,21 +337,27 @@ class Operations:
 
     def __handle_delete_operation(self, bank_account_row: pd.Series, operation_id: int) -> None:
         """Gère la suppression d'une opération et rafraîchit l'affichage."""
+        loading_win = LoadingPopup(self.__master, "Suppression en cours...")
 
-        try:
-            self.__db_banking.delete_operation(bank_account_row["id"], operation_id)
-            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_bank_operations(bank_account_row)
+        def task():
+            try:
+                self.__banking_db.delete_operation(bank_account_row["id"], operation_id)
+                self.update_bilan(bank_account_row["id"], bank_account_row["name"])
+            except Exception:
+                self.__master.after(
+                    0, lambda: messagebox.showerror("Erreur", "Erreur lors de la suppression d'une opération")
+                )
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, bank_account_row))
 
-        except Exception as e:
-            messagebox.showerror(f"Erreur lors de la suppression d'une opération' : {e}")
+        threading.Thread(target=task, daemon=True).start()
 
     def __handle_edit_operation(self, operation: pd.Series, bank_account_row: pd.Series) -> None:
         """Ouvre la fenêtre de modification pour une opération donnée."""
 
         OperationEditWindow(
             self.__master,
-            self.__db_banking,
+            self.__banking_db,
             bank_account_row["id"],
             operation,
             lambda data: self.__process_update(data, bank_account_row),
@@ -367,7 +373,7 @@ class Operations:
             return
 
         df["bank_account_id"] = bank_account_row["id"]
-        existing_ops = self.__db_banking.get_operations_by_bank_account(bank_account_row["id"])
+        existing_ops = self.__banking_db.get_operations_by_bank_account(bank_account_row["id"])
 
         if not existing_ops.empty:
             # Création des clés uniques de comparaison
@@ -414,7 +420,7 @@ class Operations:
 
         def task():
             try:
-                self.__db_banking.add_operations(df)
+                self.__banking_db.add_operations(df)
                 self.__master.after(0, lambda: self.__process_categorization(bank_account_row, loading_win))
 
             except Exception as e:
@@ -428,13 +434,13 @@ class Operations:
             loading_win.close()
 
         try:
-            categorizer = Categorizer(self.__master, self.__db_banking, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__banking_db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
                 self.__master.wait_window(cat_window)
 
-            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+            self.update_bilan(bank_account_row["id"], bank_account_row["name"])
             self.__controller.show_bank_operations(bank_account_row)
             self.__on_import_success(bank_account_row, None)
 
@@ -462,14 +468,14 @@ class Operations:
         """Lance le processus de catégorisation."""
 
         try:
-            categorizer = Categorizer(self.__master, self.__db_banking, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__banking_db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
                 self.__master.wait_window(cat_window)
 
             if categorizer.has_changed:
-                self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
+                self.update_bilan(bank_account_row["id"], bank_account_row["name"])
                 self.__controller.show_bank_operations(bank_account_row)
 
         except Exception as e:
@@ -477,39 +483,51 @@ class Operations:
 
     def __process_add(self, new_operation: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
+        loading_win = LoadingPopup(self.__master, "Ajout en cours...")
 
-        try:
-            df = pd.DataFrame([new_operation])
-            self.__db_banking.add_operations(df)
-            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_bank_operations(bank_account_row)
+        def task():
+            try:
+                df = pd.DataFrame([new_operation])
+                self.__banking_db.add_operations(df)
+                self.update_bilan(bank_account_row["id"], bank_account_row["name"])
+            except Exception:
+                self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de l'ajout"))
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, bank_account_row))
 
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de l'ajout : {e}")
+        threading.Thread(target=task, daemon=True).start()
 
     def __process_update(self, updated_data: dict, bank_account_row: pd.Series) -> None:
         """Met à jour la base de données et rafraîchit l'affichage."""
+        loading_win = LoadingPopup(self.__master, "Modification en cours...")
 
-        try:
-            self.__db_banking.update_operation(bank_account_row["id"], updated_data)
-            self.__update_bilan(bank_account_row["id"], bank_account_row["name"])
-            self.__controller.show_bank_operations(bank_account_row)
+        def task():
+            try:
+                self.__banking_db.update_operation(bank_account_row["id"], updated_data)
+                self.update_bilan(bank_account_row["id"], bank_account_row["name"])
+            except Exception:
+                self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de la mise à jour"))
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, bank_account_row))
 
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Erreur lors de la mise à jour : {e}")
+        threading.Thread(target=task, daemon=True).start()
 
-    def __update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
+    def __on_process_complete(self, loading_win: LoadingPopup, bank_account_row: pd.Series) -> None:
+        loading_win.close()
+        self.__controller.show_bank_operations(bank_account_row)
+
+    def update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un compte bancaire."""
 
         # Supprime le dossier bilan du compte pour que les données soient à jour
-        path = os.path.join(self.__config["destination_path"], bank_account_name)
+        path = os.path.join(f"{self.__config['destination_path']}/bank_account", bank_account_name)
         if os.path.exists(path):
             shutil.rmtree(path)
 
         # Créer les graphiques HTML
-        chart_generator = FinancialChart(self.__db_banking, bank_account_name)
+        chart_generator = FinancialChart(self.__banking_db, bank_account_name)
         chart_generator.generate_all_reports(bank_account_id)
 
         # Créer les fichiers Excel
-        excel_generator = BnpParibasExcelReportGenerator(self.__db_banking, bank_account_name)
+        excel_generator = ExcelGenerator(self.__banking_db, bank_account_name)
         excel_generator.generate_all_reports(bank_account_id)

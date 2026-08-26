@@ -1,5 +1,8 @@
+import os
+import shutil
 import unicodedata
 from datetime import datetime, timedelta
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -77,3 +80,32 @@ def excel_date_to_datetime(excel_date: float) -> datetime:
         return excel_date
 
     return datetime(1899, 12, 30) + timedelta(days=excel_date)
+
+
+def handle_download(file_path: str) -> None:
+    """Permet à l'utilisateur de copier le bilan HTML vers un emplacement local."""
+
+    try:
+        if not os.path.exists(file_path):
+            messagebox.showerror("Erreur", "Le fichier source est introuvable.")
+            return
+
+        default_filename = os.path.basename(file_path)
+
+        # Ouvrir la boîte de dialogue pour choisir la destination
+        destination_path = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            initialfile=default_filename,
+            filetypes=[("Fichier HTML", "*.html"), ("Tous les fichiers", "*.*")],
+            title="Télécharger le bilan",
+        )
+
+        # Si l'utilisateur n'a pas annulé, on copie le fichier
+        if destination_path:
+            shutil.copy2(file_path, destination_path)
+            messagebox.showinfo(
+                "Succès", f"Le bilan a été téléchargé avec succès :\n{os.path.basename(destination_path)}"
+            )
+
+    except Exception as e:
+        messagebox.showerror("Erreur", f"Échec du téléchargement : {e}")

@@ -1,18 +1,22 @@
 from tkinter import messagebox
 
+import pandas as pd
 import requests
 import yfinance as yf
 
 
-def fetch_stock_data(db_stock, data: list[str]) -> tuple[dict[str, list], list[dict[str, str]]]:
+def fetch_stock_data(db_stock, data: pd.DataFrame | list[str]) -> tuple[dict[str, list], list[dict[str, str]]]:
     """Télécharge et extrait les données requises pour alimenter les tables."""
 
-    data = data.copy()
-    tickers_in_transactions = (
-        data["symbol"].dropna()[data["symbol"].astype(str).str.strip() != ""].drop_duplicates().tolist()
-    )
-    isin_ticker_add = []
+    if isinstance(data, pd.DataFrame):
+        data = data.copy()
+        tickers_in_transactions = (
+            data["symbol"].dropna()[data["symbol"].astype(str).str.strip() != ""].drop_duplicates().tolist()
+        )
+    else:
+        tickers_in_transactions = data
 
+    isin_ticker_add = []
     stocks_data = []
     prices_data = []
     splits_data = []
@@ -57,7 +61,9 @@ def fetch_stock_data(db_stock, data: list[str]) -> tuple[dict[str, list], list[d
                 if not isin:
                     isin = ticker_obj.isin
             except Exception as e:
-                messagebox.showinfo(f"Avertissement : Timeout ou échec de récupération du code ISIN pour {symbol} : {e}")
+                messagebox.showinfo(
+                    f"Avertissement : Timeout ou échec de récupération du code ISIN pour {symbol} : {e}"
+                )
                 continue
 
             if isin == "-" or not isin:
@@ -71,7 +77,7 @@ def fetch_stock_data(db_stock, data: list[str]) -> tuple[dict[str, list], list[d
 
         # Extraction des données historiques (Prix, Dividendes, Splits)
         try:
-            history = ticker_obj.history(period="max", actions=True)
+            history = ticker_obj.history(period="max", actions=True, auto_adjust=False)
         except Exception as e:
             messagebox.showinfo(f"Erreur lors du téléchargement de l'historique pour {isin} : {e}")
             continue
