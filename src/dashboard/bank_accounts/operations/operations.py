@@ -11,7 +11,7 @@ from accounts.banking.database.banking_db import BankingDB
 from accounts.banking.importers.data_extractor import DataExtractor
 from accounts.banking.processing.categorizer import Categorizer
 from accounts.banking.reporting.excel_generator import ExcelGenerator
-from accounts.banking.visualization.financial_chart import FinancialChart
+from accounts.banking.visualization.financial_chart import generate_all_reports
 from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
 from utils.data_utils import remove_accents
 from utils.loading_popup import LoadingPopup
@@ -525,8 +525,7 @@ class Operations:
             shutil.rmtree(path)
 
         # Créer les graphiques HTML
-        chart_generator = FinancialChart(self.__banking_db, bank_account_name)
-        chart_generator.generate_all_reports(bank_account_id)
+        generate_all_reports(self.__banking_db, bank_account_id, bank_account_name)
 
         # Créer les fichiers Excel
         excel_generator = ExcelGenerator(self.__banking_db, bank_account_name)
