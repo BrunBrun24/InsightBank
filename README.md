@@ -4,11 +4,11 @@
 
 ---
 
-![Accueil](assets/accueil.png)
+![Accueil](https://github.com/user-attachments/assets/d358f64e-6105-477b-abf8-98a8883c057b)
 
 | Configuration | Informations |
 | :---: | :---: |
-| ![Configuration](assets/configuration.png) | ![Informations](assets/informations.png) |
+| ![Configuration](https://github.com/user-attachments/assets/f3544fd0-1957-4285-9b4d-e2166d5b5219) | ![Informations](https://github.com/user-attachments/assets/48daf418-0b16-4ab6-bd29-8497f86e246c) |
 
 ---
 
@@ -21,10 +21,10 @@ Le module Banque permet de centraliser vos comptes courants, de catégoriser vos
 * **Bilans Excel complets** : Exportation d'un rapport complet récapitulant l'ensemble de vos revenus et dépenses par catégories et sous-catégories.
 
 ### Rendu interactif HTML
-<video src="https://github.com/user-attachments/assets/19538a56-4bf0-4613-bd4d-fe100d1df5fa" width="100%" controls></video>
+<video src="https://github.com/user-attachments/assets/09bcacb2-5be0-459e-bc18-83e85b449333" width="100%" controls></video>
 
 ### Rapport Excel
-![Rapport Excel Banque](assets/bank_excel.png)
+![Rapport Excel Banque](https://github.com/user-attachments/assets/98bee0d9-e78a-4e7b-9c6f-59d5931f1ddf)
 
 ---
 
@@ -37,14 +37,31 @@ Le module Bourse permet de suivre la performance globale de vos placements, d'an
 * **Bilans Excel complets** : Génération d'un fichier Excel détaillé comprenant le tableau de bord, l'état des positions ouvertes, l'historique complet des transactions et la matrice de corrélation des rendements.
 
 ### Rendu interactif HTML
-<video src="https://github.com/user-attachments/assets/251ece49-dacd-4b09-9a2d-8278e0f0e367" width="100%" controls></video>
+<video src="https://github.com/user-attachments/assets/4a04e7a4-1d64-4f33-a661-ef441625efb8" width="100%" controls></video>
 
 ### Rapport Excel
 | Tableau de Bord Portefeuille | Détail des Positions Ouvertes |
 | :---: | :---: |
-| ![Dashboard Bourse Excel](assets/stock_dashboard.png) | ![Positions Bourse Excel](assets/stock_details_positions.png) |
+| ![Dashboard Bourse Excel](https://github.com/user-attachments/assets/c985e596-e0b2-445c-85e0-92dcb15da374) | ![Positions Bourse Excel](https://github.com/user-attachments/assets/a2239475-88b6-447b-a14b-a186cf203874) |
 | Transactions du Portefeuille | Matrice de Corrélation  |
-| ![Transactions Bourse Excel](assets/stock_transactions.png) | ![Corrélation Bourse Excel](assets/stock_matrix_correlation.png) |
+| ![Transactions Bourse Excel](https://github.com/user-attachments/assets/131d9100-04fd-49b0-9cc2-6e2eb56daff4) | ![Corrélation Bourse Excel](https://github.com/user-attachments/assets/12e96d19-ab56-494c-9c88-75df709868aa) |
+
+---
+
+## 💰 Module Patrimoine Global
+
+Le module Patrimoine Global permet de consolider l'ensemble de vos avoirs financiers en un seul et unique endroit pour obtenir une vision macroéconomique de votre patrimoine.
+
+* **Vue consolidée** : Regroupe automatiquement l'ensemble de vos comptes bancaires et de vos portefeuilles d'investissement.
+* **Bilans détaillés et globaux** : Visualisez un bilan séparé pour vos liquidités bancaires, un bilan pour vos portefeuilles boursiers, ainsi qu'un bilan global combinant l'intégralité de votre patrimoine net.
+* **Support Multidevise** : Choisissez librement la devise de votre choix pour afficher et convertir l'ensemble des valorisations de votre patrimoine.
+* **Rapports HTML interactifs & Bilans Excel** : Retrouvez le même niveau d'interactivité graphique et d'exportation de données détaillées pour suivre l'évolution de vos actifs dans le temps.
+
+### Rendu interactif HTML
+<video src="https://github.com/user-attachments/assets/f106d3e3-7a7f-40dc-aa9f-5abf831fbd93" width="100%" controls></video>
+
+### Rapport Excel
+![Rapport Excel Patrimoine](https://github.com/user-attachments/assets/89199ca2-e6b0-45d9-b4e2-2630f560381c)
 
 ---
 
@@ -54,11 +71,11 @@ Pour savoir exactement comment exporter et importer vos données (formats attend
 
 ---
 
-## 🚀 Road Map
+## 🔒 Confidentialité & Sécurité
 
-* ✅ **Module Banque** : Gestion, catégorisation, analyse des opérations, rendus HTML et exports Excel.
-* ✅ **Module Bourse** : Suivi des placements, calcul de performances, matrice de corrélation, rendus HTML, exports Excel et benchmark.
-* 🔄 **Patrimoine Global** : Visualisation consolidée unifiée (Comptes bancaires + Portefeuilles Boursiers).
+**InsightBank** a été entièrement conçue pour garantir une confidentialité absolue :
+* **Stockage 100% Local** : Toutes vos données financières, transactions et configurations restent stockées uniquement sur votre propre ordinateur.
+* **Aucun tiers ni serveur distant** : Aucune donnée n'est transmise ou enregistrée sur un serveur externe. Vous êtes la seule personne à y avoir accès.
 
 ---
 
@@ -68,6 +85,13 @@ Ce projet est distribué sous licence **MIT**. Vous êtes libre de l'utiliser, d
 
 > ⚠️ **Avertissement concernant Highcharts :**  
 > Ce projet intègre la bibliothèque **Highcharts** pour le rendu des graphiques interactifs HTML. Highcharts n'est pas sous licence MIT et reste la propriété de son éditeur. Si vous souhaitez réutiliser, modifier ou redistribuer ce projet, il vous appartient de vous conformer aux termes de la [licence Highcharts](https://www.highcharts.com/license) (usage strictement personnel/non-commercial ou acquisition d'une licence commerciale selon votre cas).
+
+---
+
+## 💻 Prérequis techniques
+
+* **Python** : Version **3.10** ou supérieure recommandée.
+* Un environnement virtuel (`venv`) est fortement conseillé pour isoler les dépendances du projet.
 
 ---
 
