@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 
 CONFIG_PATH = os.path.join("config.json")
 
@@ -10,6 +11,7 @@ def load_config() -> dict:
             "destination_path": "exports",
             "smart_categorization_enabled": "true",
             "benchmark": "^GSPC",
+            "currency": "EUR",
             "database": {
                 "db_banking_path": "data/bank_accounts.db",
                 "db_stock_path": "data/stock.db",
@@ -90,3 +92,35 @@ def load_config() -> dict:
 def save_config(data):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def update_config_benchmark(benchmark: str):
+    if benchmark == "S&P 500":
+        benchmark = "^GSPC"
+    elif benchmark == "NASDAQ":
+        benchmark = "^IXIC"
+    elif benchmark == "MSCI World":
+        benchmark = "URTH"
+    elif benchmark == "CAC 40":
+        benchmark = "^FCHI"
+
+    full_config = load_config()
+    full_config["benchmark"] = benchmark
+    save_config(full_config)
+
+
+def update_config_currency(currency: str):
+    if currency == "EUR":
+        currency = "€"
+    elif currency == "USD":
+        currency = "$"
+
+    full_config = load_config()
+    full_config["currency"] = currency
+    save_config(full_config)
+
+
+def update_config_last_login():
+    full_config = load_config()
+    full_config["last_login_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_config(full_config)

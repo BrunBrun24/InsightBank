@@ -1,5 +1,4 @@
 from datetime import datetime
-from tkinter import messagebox
 
 import customtkinter as ctk
 import pandas as pd
@@ -212,6 +211,10 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
         self._refresh_stocks_list()
         self.__render_dynamic_fields()
+
+        # Label pour l'affichage des erreurs en rouge
+        self.__error_label = ctk.CTkLabel(self, text="", text_color="red", font=("Arial", 12))
+        self.__error_label.pack(pady=(5, 0))
 
         btn_label = "Enregistrer" if self.__is_edit_mode else "Ajouter"
         ctk.CTkButton(
@@ -576,6 +579,17 @@ class TransactionEditWindow(ctk.CTkToplevel):
     def __handle_save(self) -> None:
         """Valide et enregistre la transaction en base de données."""
 
+        # Réinitialisation du message d'erreur à chaque tentative
+        self.__error_label.configure(text="")
+
+        # Validation de la date
+        raw_date = self.__date_picker.get().strip()
+        try:
+            valid_date = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError:
+            self.__error_label.configure(text="Format de date invalide (AAAA-MM-JJ).")
+            return
+
         op_display = self.__operation_var.get()
         type_op = self.OPERATIONS_MAP.get(op_display, "buy")
 
@@ -585,7 +599,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
         if type_op in ["buy", "sell", "dividend"]:
             ticker = self.__get_selected_ticker()
             if not ticker:
-                messagebox.showerror("Erreur", "Veuillez choisir un titre valide.")
+                self.__error_label.configure(text="Veuillez choisir un titre valide.")
                 return
 
             ticker_id_map = self.__db.get_portfolio_ticker_ids(self.__portfolio_id)
@@ -599,20 +613,20 @@ class TransactionEditWindow(ctk.CTkToplevel):
             original_fee = round(float(raw_fee), 2) if raw_fee else 0.0
 
             if original_amount <= 0:
-                messagebox.showerror("Erreur", "Le montant doit être supérieur à zéro.")
+                self.__error_label.configure(text="Le montant doit être supérieur à zéro.")
                 return
 
-            # Gestion stricte du prix unitaire
+            # Validation du prix unitaire
             price_orig = None
             if type_op in ["buy", "sell"]:
                 raw_price = self.__price_orig_var.get().replace(",", ".").strip()
                 if not raw_price:
-                    messagebox.showerror("Erreur", "Le prix unitaire est obligatoire.")
+                    self.__error_label.configure(text="Le prix unitaire est obligatoire.")
                     return
-                price_orig = round(float(raw_price), 2)
 
+                price_orig = round(float(raw_price), 2)
                 if price_orig <= 0:
-                    messagebox.showerror("Erreur", "Le prix unitaire doit être supérieur à zéro.")
+                    self.__error_label.configure(text="Le prix unitaire doit être supérieur à zéro.")
                     return
 
             rate = float(self.__rate_var.get().replace(",", "."))
@@ -652,7 +666,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
                 "portfolio_id": self.__portfolio_id,
                 "portfolio_ticker_id": portfolio_ticker_id,
                 "type": type_op,
-                "date": self.__date_picker.get(),
+                "date": valid_date,
                 "original_amount": original_amount,
                 "original_price": price_orig,
                 "original_fee": original_fee,
@@ -673,4 +687,4 @@ class TransactionEditWindow(ctk.CTkToplevel):
             self.destroy()
 
         except ValueError:
-            messagebox.showerror("Erreur de saisie", "Veuillez saisir des valeurs numériques valides.")
+            self.__error_label.configure(text="Veuillez saisir des valeurs numériques valides.")

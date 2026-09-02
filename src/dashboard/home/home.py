@@ -24,7 +24,7 @@ class Home:
         actions = [
             {
                 "name": "Comptes",
-                "desc": "Gérer vos différents\ncomptes.",
+                "desc": "Gérer vos différents\ncomptes bancaires",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
                 "icon_path": "src/static/img/icons/bank_account.png",
@@ -32,7 +32,7 @@ class Home:
             },
             {
                 "name": "Bourse",
-                "desc": "Suivre vos placements\net investissements.",
+                "desc": "Suivre vos placements\net investissements",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
                 "icon_path": "src/static/img/icons/stock.png",
@@ -40,15 +40,15 @@ class Home:
             },
             {
                 "name": "Patrimoine",
-                "desc": "Visualisez l'évolution de votre\npatrimoine.",
+                "desc": "Visualisez l'évolution de\nvotre patrimoine",
                 "fg_color": self.__theme["green"]["fg_color"],
                 "hover_color": self.__theme["green"]["hover_color"],
                 "icon_path": "src/static/img/icons/heritage.png",
-                "cmd": lambda: self.__controller.show_home(),  # TODO
+                "cmd": lambda: self.__controller.show_heritage(),
             },
             {
                 "name": "Configuration",
-                "desc": "Configurez ici l'ensemble de\nvos préférences et réglages.",
+                "desc": "Configurez ici l'ensemble de\nvos préférences et réglages",
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["hover_color"],
                 "icon_path": "src/static/img/icons/edit.png",
@@ -56,7 +56,7 @@ class Home:
             },
             {
                 "name": "Informations",
-                "desc": "Consulter l'aide et\nles mentions légales.",
+                "desc": "Consulter l'aide et\nles mentions légales",
                 "fg_color": self.__theme["blue_03"]["fg_color"],
                 "hover_color": self.__theme["blue_03"]["hover_color"],
                 "icon_path": "src/static/img/icons/information.png",

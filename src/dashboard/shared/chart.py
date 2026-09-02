@@ -1,12 +1,11 @@
 import os
-import webbrowser
 from typing import Literal
 
 import customtkinter as ctk
 import pandas as pd
 from PIL import Image
 
-from utils.data_utils import handle_download
+from utils.data_utils import handle_download, open_in_browser
 
 
 class Chart:
@@ -58,7 +57,7 @@ class Chart:
         available_years = []
         for file in os.listdir(bilan_dir):
             if file.endswith(".html"):
-                year_name = file.replace("Bilan ", "").replace(".html", "")
+                year_name = file.replace(".html", "")
                 file_path = os.path.join(bilan_dir, file)
                 available_years.append({"year": year_name, "path": file_path})
 
@@ -104,15 +103,9 @@ class Chart:
                 text="Voir le bilan",
                 fg_color=self.__theme["blue_03"]["fg_color"],
                 hover_color=self.__theme["blue_03"]["hover_color"],
-                command=lambda p=data["path"]: self.__open_in_browser(p),
+                command=lambda p=data["path"]: open_in_browser(p),
                 corner_radius=8,
                 height=30,
                 font=("Arial", 12, "bold"),
             ).pack(side="bottom", pady=15, padx=15, fill="x")
 
-    def __open_in_browser(self, file_path: str) -> None:
-        """Ouvre le fichier HTML dans le navigateur par défaut de l'utilisateur"""
-        absolute_path = os.path.abspath(file_path)
-
-        if os.path.exists(absolute_path):
-            webbrowser.open(f"file://{absolute_path}", new=2)

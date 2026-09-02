@@ -1,10 +1,9 @@
-import os
-import shutil
 import sqlite3
 from typing import Literal
 
 import pandas as pd
 
+from accounts.stock.database.stock_db import StockDB
 from config import load_config
 
 from ...shared.database_base import DatabaseBase
@@ -19,7 +18,7 @@ class BankingDB(DatabaseBase):
         self._create_database()
         self.__verify_category_consistency()
 
-    def add_bank_account(self, bank_account_name: str) -> None:
+    def add_bank_account(self, bank_account_name: str, currency: str) -> None:
         """Ajout d'un nouveau compte bancaire."""
 
         with self._get_connection() as conn:
@@ -30,7 +29,7 @@ class BankingDB(DatabaseBase):
             if cursor.fetchone():
                 raise ValueError(f"Le compte '{bank_account_name}' existe déjà.")
 
-            cursor.execute("INSERT INTO bank_accounts (name) VALUES (?)", (bank_account_name,))
+            cursor.execute("INSERT INTO bank_accounts (name, currency) VALUES (?, ?)", (bank_account_name, currency))
 
     def add_operations(self, operations_df: pd.DataFrame) -> None:
         """Ajoute plusieurs opérations dans la BDD."""
@@ -40,12 +39,12 @@ class BankingDB(DatabaseBase):
 
         if "category" in operations_df.columns:
             cat_name = operations_df["category"].iloc[0]
-            cat_id = self._get_or_create_category_id(cat_name)
+            cat_id = self.__get_or_create_category_id(cat_name)
             operations_df["category_id"] = cat_id
 
             if "sub_category" in operations_df.columns:
                 sub_name = operations_df["sub_category"].iloc[0]
-                sub_id = self._get_or_create_sub_category_id(cat_id, sub_name)
+                sub_id = self.__get_or_create_sub_category_id(cat_id, sub_name)
                 operations_df["sub_category_id"] = sub_id
 
             cols_to_drop = ["category", "sub_category", "id"]
@@ -131,8 +130,8 @@ class BankingDB(DatabaseBase):
             cursor = conn.cursor()
 
             # Récupération ou création des identifiants techniques (IDs)
-            category_id = self._get_or_create_category_id(category_name)
-            sub_category_id = self._get_or_create_sub_category_id(category_id, sub_category_name)
+            category_id = self.__get_or_create_category_id(category_name)
+            sub_category_id = self.__get_or_create_sub_category_id(category_id, sub_category_name)
 
             cursor.execute(
                 """
@@ -217,6 +216,28 @@ class BankingDB(DatabaseBase):
 
         return stats
 
+    def get_bank_account_currency_symbol(self, bank_account_id: int) -> str | None:
+        """Récupère la devise d'un compte bancaire spécifique."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            query = "SELECT currency FROM bank_accounts WHERE id = ?"
+            cursor.execute(query, (bank_account_id,))
+            result = cursor.fetchone()[0]
+
+        if result == "EUR":
+            return "€"
+        elif result == "USD":
+            return "$"
+
+    def get_all_bank_account_currencies(self) -> list[dict[str, int | str]]:
+        """Récupère la liste des comptes bancaires avec leur ID et leur devise."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            query = "SELECT id, name, currency FROM bank_accounts"
+            cursor.execute(query)
+
+            return [{"id": row[0], "name": row[1], "currency": row[2]} for row in cursor.fetchall()]
+
     def get_categories_hierarchy(self) -> tuple[dict, dict]:
         """Récupère les catégories et sous-catégories pour les revenus et les dépenses."""
 
@@ -246,37 +267,47 @@ class BankingDB(DatabaseBase):
 
         return incomes, expenses
 
-    def get_all_operations(self, table_name: str) -> pd.DataFrame:
-        """Récupère toutes les opérations."""
+    def get_account_operations(self, account_id: int) -> pd.DataFrame:
+        """Récupère les opérations d'un compte spécifique converties dans la devise cible."""
 
-        queries = {
-            "categorized_operations": """
-                SELECT 
-                    co.id AS entry_id,
-                    c.name AS category_name,
-                    sc.name AS sub_category_name,
-                    r.operation_date,
-                    r.short_label,
-                    r.operation_type,
-                    r.label,
-                    r.amount,
-                    r.id AS raw_id
-                FROM categorized_operations co
-                JOIN categories c ON co.category_id = c.id
-                JOIN sub_categories sc ON co.sub_category_id = sc.id
-                JOIN raw_data r ON co.raw_data_id = r.id
-            """,
-            "sub_categories": """
-                SELECT 
-                    sc.id,
-                    c.name AS parent_category,
-                    sc.name AS sub_category_name
-                FROM sub_categories sc
-                JOIN categories c ON sc.category_id = c.id
-            """,
-        }
+        query = """
+            SELECT 
+                r.id AS raw_id,
+                r.bank_account_id,
+                b.currency AS account_currency,
+                c.name AS category_name,
+                sc.name AS sub_category_name,
+                r.operation_date,
+                r.short_label,
+                r.operation_type,
+                r.label,
+                r.amount
+            FROM raw_data r
+            JOIN bank_accounts b ON r.bank_account_id = b.id
+            LEFT JOIN categories c ON r.category_id = c.id
+            LEFT JOIN sub_categories sc ON r.sub_category_id = sc.id
+            WHERE r.bank_account_id = ?
+            ORDER BY r.operation_date ASC
+        """
 
-        query = queries.get(table_name, f'SELECT * FROM "{table_name}"')
+        with self._get_connection() as conn:
+            df_ops = pd.read_sql_query(query, conn, params=(account_id,))
+
+        if df_ops.empty:
+            return df_ops
+
+        return df_ops
+
+    def get_categories_structure(self) -> pd.DataFrame:
+        """Récupère l'ensemble des catégories principales et leurs sous-catégories associées."""
+        query = """
+            SELECT 
+                c.name AS main_category,
+                sc.name AS sub_category
+            FROM categories c
+            LEFT JOIN sub_categories sc ON sc.category_id = c.id
+            ORDER BY main_category, sub_category
+        """
 
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
@@ -343,24 +374,71 @@ class BankingDB(DatabaseBase):
 
         return incomes_list, expenses_list
 
-    def get_categorized_operations_by_year(self, bank_account_id: int) -> dict[str, pd.DataFrame]:
-        """Regroupe les opérations catégorisées par année et par type."""
-
-        # 1. On récupère les différentes catégories pour les revenus et les dépenses
+    def get_categorized_operations_by_year(
+        self, bank_accounts: list[dict] | int, stock_db: StockDB, is_heritage: bool
+    ) -> dict[int, dict[str, pd.DataFrame]]:
+        """Regroupe les opérations catégorisées par année pour une liste de comptes."""
         incomes_list, expenses_list = self.get_category_lists()
+        target_currency = load_config()["currency"]
 
-        # 2. On récupère toutes les opérations
-        operations = self.get_categorized_operations_df(bank_account_id).reset_index(drop=True)
+        if is_heritage:
+            all_operations_dfs = []
+
+            # Extraction et conversion compte par compte
+            for account in bank_accounts:
+                acc_id = account["id"]
+                acc_currency = account["currency"]
+
+                # Extraction des opérations du compte
+                df_account = self.get_categorized_operations_df(acc_id).reset_index(drop=True)
+                if df_account.empty:
+                    continue
+
+                df_account["amount"] = df_account["amount"].abs()
+
+                # Conversion FX si la devise est différente et stock_db fourni
+                if acc_currency != target_currency and stock_db is not None:
+                    rates = stock_db.get_currency_conversion_rates(acc_currency, target_currency)
+
+                    if not rates.empty:
+                        rates_df = rates.reset_index()
+                        rates_df.columns = ["operation_date", "rate"]
+                        rates_df = rates_df.sort_values("operation_date")
+
+                        df_account = df_account.sort_values("operation_date")
+                        df_account = pd.merge_asof(
+                            df_account,
+                            rates_df,
+                            on="operation_date",
+                            direction="nearest",
+                        )
+                        df_account["rate"] = df_account["rate"].fillna(1.0)
+                        df_account["amount"] = (df_account["amount"] * df_account["rate"]).round(2)
+                        df_account = df_account.drop(columns=["rate"])
+
+                all_operations_dfs.append(df_account)
+
+            if not all_operations_dfs:
+                return {}
+
+        else:
+            all_operations_dfs = [self.get_categorized_operations_df(bank_accounts).reset_index(drop=True)]
+
+        # Fusion globale de toutes les opérations
+        operations = pd.concat(all_operations_dfs, ignore_index=True)
         operations["year"] = operations["operation_date"].dt.year
-        operations["amount"] = operations["amount"].abs()
 
-        # 3. On traite les données
+        # Répartition par année
         years_dict = {}
         for year, year_operations_df in operations.groupby("year"):
             incomes_df = year_operations_df[year_operations_df["category"].isin(incomes_list)]
             expenses_df = year_operations_df[year_operations_df["category"].isin(expenses_list)]
 
-            years_dict[int(year)] = {"all": year_operations_df, "incomes": incomes_df, "expenses": expenses_df}
+            years_dict[int(year)] = {
+                "all": year_operations_df,
+                "incomes": incomes_df,
+                "expenses": expenses_df,
+            }
 
         return years_dict
 
@@ -398,14 +476,14 @@ class BankingDB(DatabaseBase):
 
             return None, None
 
-    def _get_or_create_category_id(
+    def __get_or_create_category_id(
         self, category_name: str, flow_type: Literal["income", "expense"] = "income", cursor=None
     ) -> int:
         """Récupère l'ID d'une catégorie ou la crée si elle n'existe pas pour ce compte."""
 
         if cursor is None:
             with self._get_connection() as conn:
-                return self._get_or_create_category_id(category_name, flow_type, conn.cursor())
+                return self.__get_or_create_category_id(category_name, flow_type, conn.cursor())
 
         # Tentative de récupération
         cursor.execute(
@@ -427,12 +505,12 @@ class BankingDB(DatabaseBase):
         )
         return cursor.lastrowid
 
-    def _get_or_create_sub_category_id(self, category_id: int, sub_category_name: str, cursor=None) -> int:
+    def __get_or_create_sub_category_id(self, category_id: int, sub_category_name: str, cursor=None) -> int:
         """Récupère l'ID d'une sous-catégorie ou la crée pour une catégorie parente donnée."""
 
         if cursor is None:
             with self._get_connection() as conn:
-                return self._get_or_create_sub_category_id(category_id, sub_category_name, cursor=conn.cursor())
+                return self.__get_or_create_sub_category_id(category_id, sub_category_name, cursor=conn.cursor())
 
         cursor.execute(
             """
@@ -468,6 +546,7 @@ class BankingDB(DatabaseBase):
                 CREATE TABLE IF NOT EXISTS bank_accounts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
+                    currency CHAR(3) NOT NULL,
 
                     UNIQUE(name)
                 );
@@ -556,92 +635,7 @@ class BankingDB(DatabaseBase):
 
                 # 2. Insertion / Mise à jour
                 for cat_name, sub_list in categories_map.items():
-                    cat_id = self._get_or_create_category_id(cat_name, flow_type, cursor)
+                    cat_id = self.__get_or_create_category_id(cat_name, flow_type, cursor)
 
                     for sub_name in sub_list:
-                        self._get_or_create_sub_category_id(cat_id, sub_name, cursor)
-
-    @staticmethod  # TODO faire une grosse BDD avec tous les comptes
-    def merge_account_databases(source_db_path: str, target_db_path: str, output_path: str) -> None:
-        """
-        Fusionne deux bases de données bancaires en préservant l'intégrité référentielle.
-
-        Cette fonction crée une copie de la source, y attache la base cible,
-        puis transfère les données en utilisant une table de correspondance temporaire
-        pour réassocier correctement les nouveaux IDs générés.
-
-        Args:
-            - source_db_path (str) : Chemin vers la première base de données (base).
-            - target_db_path (str) : Chemin vers la seconde base de données à intégrer.
-            - output_path (str) : Chemin du fichier de destination final.
-        """
-
-        try:
-            # Préparation du dossier de destination
-            directory = os.path.dirname(output_path)
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory)
-
-            # Copie de la base source vers la destination
-            shutil.copy2(source_db_path, output_path)
-
-            with sqlite3.connect(output_path) as conn:
-                cursor = conn.cursor()
-
-                # Attacher la base de données cible
-                cursor.execute(f"ATTACH DATABASE '{target_db_path}' AS db_to_merge")
-
-                # 1. Fusion des catégories et sous-catégories (sans doublons)
-                cursor.execute("INSERT OR IGNORE INTO categories (name) SELECT name FROM db_to_merge.categories")
-
-                cursor.execute("""
-                    INSERT OR IGNORE INTO sub_categories (category_id, name) 
-                    SELECT (SELECT id FROM categories WHERE name = c.name), sc.name 
-                    FROM db_to_merge.sub_categories sc
-                    JOIN db_to_merge.categories c ON sc.category_id = c.id
-                """)
-
-                # 2. Création d'une table de correspondance temporaire pour les IDs de raw_data
-                # Cela permet de savoir quel ID de la base cible correspond à quel ID dans la nouvelle base.
-                cursor.execute("CREATE TEMP TABLE id_mapping (old_id INTEGER, new_id INTEGER)")
-
-                # 3. Insertion des données brutes et remplissage du mapping
-                # On récupère les données de la base cible
-                cursor.execute(
-                    "SELECT id, operation_date, short_label, operation_type, label, amount FROM db_to_merge.raw_data"
-                )
-                rows_to_merge = cursor.fetchall()
-
-                for row in rows_to_merge:
-                    old_id = row[0]
-                    cursor.execute(
-                        """
-                        INSERT INTO raw_data (operation_date, short_label, operation_type, label, amount)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                        row[1:],
-                    )
-                    # On mémorise le lien (old -> new)
-                    cursor.execute(
-                        "INSERT INTO id_mapping VALUES (?, ?)",
-                        (old_id, cursor.lastrowid),
-                    )
-
-                # 4. Fusion des opérations catégorisées en utilisant le mapping
-                cursor.execute("""
-                    INSERT INTO categorized_operations (category_id, sub_category_id, raw_data_id)
-                    SELECT 
-                        (SELECT id FROM categories WHERE name = c_merged.name),
-                        (SELECT id FROM sub_categories WHERE name = sc_merged.name 
-                            AND category_id = (SELECT id FROM categories WHERE name = c_merged.name)),
-                        m.new_id
-                    FROM db_to_merge.categorized_operations co_merged
-                    JOIN db_to_merge.categories c_merged ON co_merged.category_id = c_merged.id
-                    JOIN db_to_merge.sub_categories sc_merged ON co_merged.sub_category_id = sc_merged.id
-                    JOIN id_mapping m ON co_merged.raw_data_id = m.old_id
-                """)
-
-                cursor.execute("DETACH DATABASE db_to_merge")
-
-        except Exception as error:
-            raise RuntimeError(f"Échec du processus de fusion : {str(error)}")
+                        self.__get_or_create_sub_category_id(cat_id, sub_name, cursor)

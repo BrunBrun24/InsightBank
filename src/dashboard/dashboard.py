@@ -12,6 +12,7 @@ from dashboard.configuration.automatisation_cat_sub_cat.automatisation_cat_sub_c
 from dashboard.configuration.categories_sub_categories.categories_sub_categories import CategoriesSubCategories
 from dashboard.configuration.configuration import Configuration
 from dashboard.configuration.portfolio_tickers.portfolio_tickers import PortfolioTickers
+from dashboard.heritage.heritage import Heritage
 from dashboard.home.home import Home
 from dashboard.information.information import Information
 from dashboard.portfolio.transactions.transactions import Transactions
@@ -55,9 +56,9 @@ class Dashboard(ctk.CTk):
             self.__config = load_config()
             self.__theme = self.__config["theme"]
             self.__banking_db_path = self.__config["database"]["db_banking_path"]
-            self.__db_stock_path = self.__config["database"]["db_stock_path"]
+            self.__stock_db_path = self.__config["database"]["db_stock_path"]
             self.__banking_db = BankingDB(self.__banking_db_path)
-            self.__stock_db = StockDB(self.__db_stock_path)
+            self.__stock_db = StockDB(self.__stock_db_path)
 
             # Demande au thread principal de construire la suite des modules
             self.after(0, self.__finish_init)
@@ -80,6 +81,7 @@ class Dashboard(ctk.CTk):
         self.__categories_sub_categories = CategoriesSubCategories(self.__main_view, self)
         self.__automatisation_cat_sub_cat = AutomatisationCatSubCat(self.__main_view, self)
         self.__portfolio_tickers = PortfolioTickers(self.__main_view, self)
+        self.__heritage = Heritage(self.__main_view, self)
 
         self.__setup_navigation_frame()
         self.show_home()
@@ -93,13 +95,13 @@ class Dashboard(ctk.CTk):
             self.__loading_win.close()
         raise error
 
-    def get_db_banking(self) -> BankingDB:
+    def get_bank_db(self) -> BankingDB:
         return self.__banking_db
 
     def set_db_banking(self, db: BankingDB) -> None:
         self.__banking_db = db
 
-    def get_db_stock(self) -> StockDB:
+    def get_stock_db(self) -> StockDB:
         return self.__stock_db
 
     def get_config(self) -> dict:
@@ -159,8 +161,11 @@ class Dashboard(ctk.CTk):
     def show_portfolio_tickers(self) -> None:
         self.__portfolio_tickers.display()
 
+    def show_heritage(self) -> None:
+        self.__heritage.display()
+
     def update_bank_bilan(self, bank_account_id: int, bank_account_name: str, callback=None) -> None:
-        loading_win = LoadingPopup(self, "Renommage du compte et génération des bilans...")
+        loading_win = LoadingPopup(self, "Génération des bilans...")
 
         def task():
             try:
@@ -171,7 +176,7 @@ class Dashboard(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def update_stock_bilan(self, portfolio_id: int, portfolio_name: str, callback=None) -> None:
-        loading_win = LoadingPopup(self, "Renommage du compte et génération des bilans...")
+        loading_win = LoadingPopup(self, "Génération des bilans...")
 
         def task():
             try:
@@ -187,75 +192,118 @@ class Dashboard(ctk.CTk):
         if callback:
             callback()
 
-    def create_card_grid(self, container: ctk.CTkFrame, items: list) -> None:
-        """Crée une grille de cartes (3 max par ligne) parfaitement centrées."""
-
-        # On vide le container
+    @staticmethod
+    def create_card_grid(container: ctk.CTkFrame, items: list, downloadable: bool = False) -> None:
+        """Crée une grille responsive de cartes (basée sur la taille de `items`, 6 max)."""
+        # Nettoyage du conteneur
         for child in container.winfo_children():
             child.destroy()
 
-        # On utilise 6 colonnes pour permettre de centrer 1, 2 ou 3 cartes proprement
+        # On extrait au maximum 6 éléments de la liste
+        selected_items = items[:6]
+        total = len(selected_items)
+
+        if total == 0:
+            return
+
+        # Configuration de la grille à 6 colonnes virtuelles
         container.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
 
-        total = len(items)
-
-        for i, item in enumerate(items):
-            row = i // 3
-            col_in_row = i % 3
-
-            # On calcule combien d'items il y a sur la ligne actuelle
-            remaining = total - (row * 3)
-            items_on_this_row = min(3, remaining)
-
-            card = ctk.CTkFrame(container, corner_radius=20, border_width=1)
-
-            # Logique de placement
-            if items_on_this_row == 3:
-                # On prend 2 colonnes par carte (Total 6)
-                card.grid(row=row, column=col_in_row * 2, columnspan=2, padx=15, pady=15, sticky="nsew")
-
-            elif items_on_this_row == 2:
-                # On place les cartes sur les colonnes 1-2 et 3-4 (On laisse 0 et 5 vides)
-                start_col = 1 if col_in_row == 0 else 3
-                card.grid(row=row, column=start_col, columnspan=2, padx=15, pady=15, sticky="nsew")
-
-            elif items_on_this_row == 1:
-                # On place la carte sur les colonnes 2-3 (Milieu parfait)
-                card.grid(row=row, column=2, columnspan=2, padx=15, pady=15, sticky="nsew")
-
-            img_data = Image.open(item["icon_path"])
-            ctk_icon = ctk.CTkImage(light_image=img_data, dark_image=img_data, size=(40, 40))
-
-            # Icône
-            icon_circle = ctk.CTkLabel(
-                card,
-                image=ctk_icon,
-                text="",
-                font=("Arial", 40),
-                fg_color=item["fg_color"],
-                width=80,
-                height=80,
-                corner_radius=40,
+        # Charger l'icône de téléchargement uniquement si nécessaire
+        img_download_icon = None
+        if downloadable or any(item.get("downloadable", False) for item in selected_items):
+            raw_dl_img = Image.open("src/static/img/icons/download.png")
+            img_download_icon = ctk.CTkImage(
+                light_image=raw_dl_img,
+                dark_image=raw_dl_img,
+                size=(30, 30),
             )
-            icon_circle.pack(pady=(30, 10))
 
-            ctk.CTkLabel(card, text=item["name"], font=("Arial", 20, "bold")).pack()
-            ctk.CTkLabel(card, text=item["desc"], text_color="gray").pack(pady=10, padx=20)
+        # Définition de la répartition des lignes selon la taille de la liste
+        if total <= 3:
+            rows_layout = [total]
+        elif total == 4:
+            rows_layout = [2, 2]
+        elif total == 5:
+            rows_layout = [3, 2]
+        else:
+            rows_layout = [3, 3]
 
-            # Spacer invisible pour pousser le bouton en bas et garder la hauteur uniforme
-            ctk.CTkLabel(card, text="", height=1).pack(expand=True)
+        item_index = 0
 
-            # Bouton
-            ctk.CTkButton(
-                card,
-                text="Accéder",
-                fg_color=item["fg_color"],
-                hover_color=item["hover_color"],
-                command=item["cmd"],
-                corner_radius=10,
-                height=35,
-                font=("Arial", 15, "bold"),
-            ).pack(side="bottom", pady=20, padx=20, fill="x")
+        for row_idx, count_in_row in enumerate(rows_layout):
+            for col_idx in range(count_in_row):
+                item = selected_items[item_index]
+                card = ctk.CTkFrame(container, corner_radius=20, border_width=1)
+
+                # Positionnement horizontal selon le nombre d'éléments sur la ligne
+                if count_in_row == 3:
+                    start_col = col_idx * 2
+                elif count_in_row == 2:
+                    start_col = 1 if col_idx == 0 else 3
+                else:
+                    start_col = 2
+
+                card.grid(
+                    row=row_idx,
+                    column=start_col,
+                    columnspan=2,
+                    padx=15,
+                    pady=15,
+                    sticky="nsew",
+                )
+
+                # Bouton de téléchargement
+                is_card_downloadable = downloadable or item.get("downloadable", False)
+                if is_card_downloadable and img_download_icon and "download_cmd" in item:
+                    btn_dl = ctk.CTkButton(
+                        card,
+                        text="",
+                        image=img_download_icon,
+                        width=32,
+                        height=32,
+                        corner_radius=8,
+                        fg_color="transparent",
+                        hover_color=("gray85", "gray25"),
+                        command=item["download_cmd"],
+                    )
+                    btn_dl.place(relx=1.0, x=-8, y=8, anchor="ne")
+
+                img_data = Image.open(item["icon_path"])
+                ctk_icon = ctk.CTkImage(light_image=img_data, dark_image=img_data, size=(40, 40))
+
+                # Icône
+                icon_circle = ctk.CTkLabel(
+                    card,
+                    image=ctk_icon,
+                    text="",
+                    font=("Arial", 40),
+                    fg_color=item["fg_color"],
+                    width=80,
+                    height=80,
+                    corner_radius=40,
+                )
+                icon_circle.pack(pady=(30, 10))
+
+                ctk.CTkLabel(card, text=item["name"], font=("Arial", 20, "bold")).pack()
+                ctk.CTkLabel(card, text=item["desc"], text_color="gray").pack(pady=10, padx=20)
+
+                # Spacer invisible
+                ctk.CTkLabel(card, text="", height=1).pack(expand=True)
+
+                # Bouton principal
+                ctk.CTkButton(
+                    card,
+                    text="Accéder",
+                    fg_color=item["fg_color"],
+                    hover_color=item["hover_color"],
+                    command=item["cmd"],
+                    corner_radius=10,
+                    height=35,
+                    font=("Arial", 15, "bold"),
+                ).pack(side="bottom", pady=20, padx=20, fill="x")
+
+                item_index += 1
 
     def __setup_navigation_frame(self) -> None:
         """Crée une barre latérale étroite avec des icônes."""
@@ -320,7 +368,7 @@ class Dashboard(ctk.CTk):
             height=40,
             fg_color="transparent",
             hover_color=("gray70", "gray30"),
-            command=self.show_home,  # TODO
+            command=self.show_heritage,
         ).grid(row=3, column=0, padx=10, pady=(10, 20))
 
         # Bouton edit

@@ -1,6 +1,8 @@
 import os
 import shutil
+import subprocess
 import unicodedata
+import webbrowser
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox
 
@@ -109,3 +111,29 @@ def handle_download(file_path: str) -> None:
 
     except Exception as e:
         messagebox.showerror("Erreur", f"Échec du téléchargement : {e}")
+
+
+def open_in_browser(file_path: str) -> None:
+    """Ouvre le fichier HTML dans le navigateur par défaut de l'utilisateur"""
+    absolute_path = os.path.abspath(file_path)
+
+    if os.path.exists(absolute_path):
+        webbrowser.open(f"file://{absolute_path}", new=2)
+
+
+def open_xlsx_window(file_path: str) -> None:
+    """Ouvre le fichier Excel."""
+    if not os.path.exists(file_path):
+        messagebox.showerror("Erreur", "Le fichier Excel est introuvable.")
+        return
+
+    try:
+        subprocess.Popen(["start", "excel", "/r", os.path.abspath(file_path)], shell=True)
+
+    except (OSError, subprocess.SubprocessError):
+        try:
+            os.startfile(file_path)
+        except OSError:
+            messagebox.showerror(
+                "Erreur critique", f"Aucun logiciel n'est associé aux fichiers {os.path.splitext(file_path)[1]}"
+            )

@@ -1,7 +1,8 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 
 from accounts.stock.database.stock_db import StockDB
 from accounts.stock.processing.portfolio_tracker import PortfolioTracker
@@ -38,8 +39,8 @@ def dataframe_to_highcharts(df: pd.DataFrame) -> list[dict]:
 
 
 def dict_df_to_highcharts(dict_df: dict[str, pd.DataFrame]) -> dict[str, dict[str, list]]:
-    """Convertit un dict de DataFrames (Ticker -> DataFrame(index=dates_historique, columns=dates_tx))
-    en dictionnaire JSON réutilisable par Highcharts.
+    """
+    Convertit un dict de DataFrames en dictionnaire JSON réutilisable par Highcharts.
     """
     result = {}
     for ticker, df in dict_df.items():
@@ -75,30 +76,40 @@ def correlation_to_heatmap(df_corr: pd.DataFrame) -> dict:
     return {"categories": categories, "data": heatmap_data}
 
 
-def generate_rapport(
-    stock_db: StockDB, portfolio_id: int, portfolio_tracker: PortfolioTracker, output_path: str | Path
+def chart_generate_rapport(
+    stock_db: StockDB,
+    portfolio_name: str,
+    output_path: str | Path,
+    portfolio_tracker: PortfolioTracker | dict,
+    portfolio_id: int | None = None,
 ) -> None:
-    # Enregistre le montant du portefeuille
-    stock_db.update_portfolio_amount(portfolio_id, portfolio_tracker.portfolio_gross_value.iloc[-1])
+    output_path.mkdir(parents=True, exist_ok=True)
+    file_path = output_path / f"{portfolio_name}.html"
 
-    currency = stock_db.get_portfolio_currency(portfolio_id)
-    currency_symbol = None
-    if currency == "EUR":
-        currency_symbol = "€"
-    elif currency == "USD":
-        currency_symbol = "$"
+    if isinstance(portfolio_tracker, dict):
+        portfolio_tracker = SimpleNamespace(**portfolio_tracker)
 
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    if portfolio_id:
+        # Enregistre le montant du portefeuille
+        stock_db.update_portfolio_amount(portfolio_id, portfolio_tracker.portfolio_gross_value.iloc[-1])
+        currency_symbol = stock_db.get_portfolio_currency_symbol(portfolio_id)
+    else:
+        currency_symbol = "€" if load_config()["currency"] == "EUR" else "$"
+
+    has_divs = (
+        not portfolio_tracker.portfolio_dividends.empty
+        and (portfolio_tracker.portfolio_dividends > 0).any()
+    )
 
     data = {
-        "name": stock_db.get_portfolio_name(portfolio_id),
+        "name": stock_db.get_portfolio_name(portfolio_id) if portfolio_id else "Tous les Portefeuilles",
         "currency": currency_symbol,
         "kpis": {
             "sharpe_ratio": portfolio_tracker.sharpe_ratio,
             "sortino_ratio": portfolio_tracker.sortino_ratio,
             "volatility": portfolio_tracker.volatility_portfolio,
             "weighted_average_correlation": portfolio_tracker.weighted_average_correlation,
+            "has_dividends": bool(has_divs),
         },
         "repartition": [
             {"name": ticker, "y": pct, "amount": float(portfolio_tracker.ticker_values[ticker].iloc[-1])}
@@ -111,12 +122,12 @@ def generate_rapport(
             "portfolio_cash": series_to_highcharts(portfolio_tracker.portfolio_cash),
             "portfolio_deposit": series_to_highcharts(portfolio_tracker.portfolio_deposit),
             "portfolio_pct": series_to_highcharts(portfolio_tracker.portfolio_pct),
-            "portfolio_daily_returns": series_to_highcharts(portfolio_tracker.portfolio_daily_returns),
             "portfolio_monthly_returns": series_to_highcharts(portfolio_tracker.portfolio_monthly_returns),
             "portfolio_total_gains": series_to_highcharts(portfolio_tracker.portfolio_total_gains),
             "portfolio_latent_gain": series_to_highcharts(portfolio_tracker.portfolio_latent_gain),
             "portfolio_dividends": series_to_highcharts(portfolio_tracker.portfolio_dividends),
             "benchmark_pct": series_to_highcharts(portfolio_tracker.benchmark_pct),
+            "benchmark_gains": series_to_highcharts(portfolio_tracker.benchmark_gains),
         },
         "multiseries": {
             "ticker_investments": dataframe_to_highcharts(portfolio_tracker.ticker_investments),
@@ -127,52 +138,64 @@ def generate_rapport(
         },
     }
 
-    portfolio_tx_gains, portfolio_tx_pct, benchmark_tx_gains, benchmark_tx_pct = portfolio_tracker.compare_tx
+    if portfolio_id:
+        _, portfolio_tx_pct, _, benchmark_tx_pct = portfolio_tracker.compare_tx
 
-    # Formatage des transactions (Buy & Sell) pour positionner les marqueurs (triangles)
-    tx_list = []
-    tx = portfolio_tracker.transactions
-    if not tx.empty:
-        raw_tx = tx.copy()
-        trade_tx = raw_tx[raw_tx["type"].isin(["buy", "sell"])]
-        for _, row in trade_tx.iterrows():
-            tx_list.append(
-                {
-                    "ticker": row["ticker"],
-                    "type": row["type"],
-                    "date": str(row["date"])[:10],
-                    "timestamp": int(pd.to_datetime(row["date"]).timestamp() * 1000),
-                    "amount": float(row["amount"]) if pd.notna(row["amount"]) else 0.0,
-                    "shares": float(row["shares"]) if pd.notna(row["shares"]) else 0.0,
-                    "price": float(row["price"]) if pd.notna(row["price"]) else 0.0,
-                }
-            )
+        # Formatage des transactions (Buy & Sell) pour positionner les marqueurs (triangles)
+        tx_list = []
+        tx = portfolio_tracker.transactions
+        if not tx.empty:
+            raw_tx = tx.copy()
+            trade_tx = raw_tx[raw_tx["type"].isin(["buy", "sell"])]
+            for _, row in trade_tx.iterrows():
+                tx_list.append(
+                    {
+                        "ticker": row["ticker"],
+                        "type": row["type"],
+                        "date": str(row["date"])[:10],
+                        "timestamp": int(pd.to_datetime(row["date"]).timestamp() * 1000),
+                        "amount": float(row["amount"]) if pd.notna(row["amount"]) else 0.0,
+                        "shares": float(row["shares"]) if pd.notna(row["shares"]) else 0.0,
+                        "price": float(row["price"]) if pd.notna(row["price"]) else 0.0,
+                    }
+                )
 
-    data["benchmark_ticker"] = load_config()["benchmark"]
-    data["compare_tx_pct"] = dict_df_to_highcharts(portfolio_tx_pct)
-    data["benchmark_tx_pct"] = dict_df_to_highcharts(benchmark_tx_pct)
-    data["all_transactions"] = tx_list
+        data["benchmark_ticker"] = load_config()["benchmark"]
+        data["compare_tx_pct"] = dict_df_to_highcharts(portfolio_tx_pct)
+        data["benchmark_tx_pct"] = dict_df_to_highcharts(benchmark_tx_pct)
+        data["all_transactions"] = tx_list
 
-    # Lecture du contenu des fichiers JavaScript
-    js_dir = Path("src/static/js")
-    highcharts_js = (js_dir / "highcharts.js").read_text(encoding="utf-8")
-    highcharts_more_js = (js_dir / "highcharts-more.js").read_text(encoding="utf-8")
-    heatmap_js = (js_dir / "heatmap.js").read_text(encoding="utf-8")
-    treemap_js = (js_dir / "treemap.js").read_text(encoding="utf-8")
-    exporting_js = (js_dir / "exporting.js").read_text(encoding="utf-8")
+    # Fichiers JavaScript vendor
+    static_dir = Path("src/static")
+    vendor_dir = static_dir / "vendor"
+    stock_dir = static_dir / "stock"
 
-    # Chargement et compilation du template
-    template_path = Path("src/static/template/stock.html")
-    template = Template(template_path.read_text(encoding="utf-8"))
+    # Chargement des scripts vendor
+    vendor_files = [
+        "highcharts.js",
+        "highcharts-more.js",
+        "heatmap.js",
+        "treemap.js",
+        "exporting.js",
+    ]
+    vendor_scripts = "\n".join(
+        [(vendor_dir / file).read_text(encoding="utf-8") for file in vendor_files if (vendor_dir / file).exists()]
+    )
 
-    # Injection des données ET du code JS dans le HTML
+    # Lecture du CSS et du JS
+    stock_css = (stock_dir / "stock.css").read_text(encoding="utf-8")
+    stock_js = (stock_dir / "stock.js").read_text(encoding="utf-8")
+
+    # Configuration de Jinja2
+    env = Environment(loader=FileSystemLoader(stock_dir))
+    template = env.get_template("stock.html")
+
+    # Rendu avec injection inline de toutes les ressources
     html_rendu = template.render(
-        highcharts_js=highcharts_js,
-        highcharts_more_js=highcharts_more_js,
-        heatmap_js=heatmap_js,
-        treemap_js=treemap_js,
-        exporting_js=exporting_js,
+        vendor_scripts=vendor_scripts,
+        stock_css=stock_css,
+        stock_js=stock_js,
         portfolio_data=data,
     )
 
-    output_file.write_text(html_rendu, encoding="utf-8")
+    file_path.write_text(html_rendu, encoding="utf-8")

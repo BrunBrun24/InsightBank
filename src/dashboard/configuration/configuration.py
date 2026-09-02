@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from PIL import Image
 
-from config import load_config, save_config
+from config import load_config, update_config_benchmark, update_config_currency
 
 
 class Configuration:
@@ -15,8 +15,8 @@ class Configuration:
 
         # 1. Header
         header_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
-        header_frame.pack(fill="x", padx=20, pady=(40, 20))
-        ctk.CTkLabel(header_frame, text="Configuration", font=("Arial", 60, "bold")).pack()
+        header_frame.pack(fill="x", padx=20, pady=(30, 20))
+        ctk.CTkLabel(header_frame, text="Configuration", font=("Arial", 50, "bold")).pack()
 
         # 2. Conteneurs
         grid_container = ctk.CTkFrame(self.__master, fg_color="transparent")
@@ -26,6 +26,7 @@ class Configuration:
         inner_container.pack(anchor="n")
         inner_container.grid_columnconfigure((0, 1, 2), weight=1, uniform="cards")
 
+        currency = load_config()["currency"]
         ticker_benchmark = load_config()["benchmark"]
         if ticker_benchmark == "^GSPC":
             benchmark = "S&P 500"
@@ -46,7 +47,7 @@ class Configuration:
             "Catégories et Sous-Catégories",
             "Optimisez la structure de votre budget en créant un système personnalisé de catégories et de sous-catégories. "
             "Cette flexibilité vous permet de classer précisément chaque opération, qu'il s'agisse de revenus récurrents ou de "
-            "dépenses imprévues, pour une analyse financière détaillée.",
+            "dépenses imprévues, pour une analyse financière détaillée",
             "src/static/img/icons/file.png",
             "Ouvrir",
             command=self.__controller.show_categories_sub_categories,
@@ -61,7 +62,7 @@ class Configuration:
             "Automatisation",
             "Simplifiez votre gestion financière grâce à l'attribution automatique de vos nouvelles opérations. "
             "En analysant instantanément vos opérations selon vos critères prédéfinis, l'application classe automatiquement "
-            "vos flux entrants et sortants pour vous offrir un suivi sans aucun effort manuel.",
+            "vos flux entrants et sortants pour vous offrir un suivi sans aucun effort manuel",
             "src/static/img/icons/bot.png",
             "Ouvrir",
             command=self.__controller.show_automatisation_cat_sub_cat,
@@ -73,10 +74,27 @@ class Configuration:
             inner_container,
             0,
             2,
+            "Devise",
+            "Sélectionnez la monnaie d'affichage principale appliquée à l'ensemble de votre patrimoine."
+            "Vos montants et analyses seront automatiquement convertis pour vous offrir une vision consolidée "
+            "et homogène dans la devise de votre choix",
+            "src/static/img/icons/heritage.png",
+            currency,
+            command=update_config_currency,
+            widget_type="menu",
+            menu_values=["EUR", "USD"],
+            width=CARD_W,
+            height=CARD_H,
+        )
+
+        self.__create_module_card(
+            inner_container,
+            1,
+            0,
             "Titres",
             "Gérez la composition de vos portefeuilles en toute simplicité. "
             "Ajoutez ou supprimez des entreprises et des titres financiers pour chaque portefeuille, "
-            "et conservez une vue d'ensemble claire de vos investissements.",
+            "et conservez une vue d'ensemble claire de vos investissements",
             "src/static/img/icons/file.png",
             "Ouvrir",
             command=self.__controller.show_portfolio_tickers,
@@ -87,15 +105,15 @@ class Configuration:
         self.__create_module_card(
             inner_container,
             1,
-            0,
+            1,
             "Benchmark",
             "Comparez la performance globale de votre portefeuille ainsi que chacun de vos titres "
             "face à votre indice de référence. "
             "Identifiez instantanément si vos investissements battent le marché "
-            "et repérez les actifs qui génèrent de la surperformance.",
+            "et repérez les actifs qui génèrent de la surperformance",
             "src/static/img/icons/stock.png",
             benchmark,
-            command=self.__update_config_benchmark,
+            command=update_config_benchmark,
             widget_type="menu",
             menu_values=["S&P 500", "NASDAQ", "MSCI World", "CAC 40"],
             width=CARD_W,
@@ -172,19 +190,3 @@ class Configuration:
             )
 
         widget.pack()
-
-    def __update_config_benchmark(self, benchmark: str):
-        """Met à jour le benchmark dans le fichier de configuration"""
-
-        if benchmark == "S&P 500":
-            benchmark = "^GSPC"
-        elif benchmark == "NASDAQ":
-            benchmark = "^IXIC"
-        elif benchmark == "MSCI World":
-            benchmark = "URTH"
-        elif benchmark == "CAC 40":
-            benchmark = "^FCHI"
-
-        full_config = load_config()
-        full_config["benchmark"] = benchmark
-        save_config(full_config)

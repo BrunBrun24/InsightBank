@@ -3,32 +3,40 @@ import uuid
 from pathlib import Path
 
 import pandas as pd
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 
 from accounts.banking.database.banking_db import BankingDB
+from accounts.stock.database.stock_db import StockDB
 from config import load_config
 
 
-def generate_all_reports(banking_db: BankingDB, bank_account_id: int, bank_account_name: str) -> None:
-    """Génère les rapports financiers annuels et le bilan global pour un compte bancaire donné."""
-    destination_path = Path(load_config()["destination_path"])
-    root_path = destination_path / "bank_account" / bank_account_name
+def chart_generate_all_reports(
+    banking_db: BankingDB, stock_db: StockDB, root_path: str | Path, bank_account_id: int | None = None
+) -> None:
     root_path.mkdir(parents=True, exist_ok=True)
+    is_heritage = not bank_account_id is not None
 
-    years_data = banking_db.get_categorized_operations_by_year(bank_account_id)
+    if not is_heritage:
+        currency_symbol = banking_db.get_bank_account_currency_symbol(bank_account_id)
+        years_data = banking_db.get_categorized_operations_by_year(bank_account_id, stock_db, is_heritage)
+    else:
+        currency_symbol = "€" if load_config()["currency"] == "EUR" else "$"
+        bank_accounts = banking_db.get_all_bank_account_currencies()
+        years_data = banking_db.get_categorized_operations_by_year(bank_accounts, stock_db, is_heritage)
 
     all_years_incomes = []
     all_years_expenses = []
     all_years_combined = []
 
     for year, data in years_data.items():
-        output_file = root_path / f"Bilan {year}.html"
+        output_file = root_path / f"{year}.html"
         generate_bank_report(
             banking_db=banking_db,
             incomes_df=data["incomes"],
             expenses_df=data["expenses"],
             incomes_expenses_df=data["all"],
             output_path=output_file,
+            currency_symbol=currency_symbol,
         )
 
         all_years_incomes.append(data["incomes"])
@@ -38,13 +46,17 @@ def generate_all_reports(banking_db: BankingDB, bank_account_id: int, bank_accou
     # Bilan Global sur l'ensemble des années disponibles
     if years_data:
         sorted_years = sorted(years_data.keys())
-        output_file = root_path / f"Bilan {sorted_years[0]}-{sorted_years[-1]}.html"
+        if not is_heritage:
+            output_file = root_path / f"{sorted_years[0]} - {sorted_years[-1]}.html"
+        else:
+            output_file = root_path / "heritage_bank.html"
         generate_bank_report(
             banking_db=banking_db,
             incomes_df=pd.concat(all_years_incomes),
             expenses_df=pd.concat(all_years_expenses),
             incomes_expenses_df=pd.concat(all_years_combined),
             output_path=output_file,
+            currency_symbol=currency_symbol,
         )
 
 
@@ -54,57 +66,67 @@ def generate_bank_report(
     expenses_df: pd.DataFrame,
     incomes_expenses_df: pd.DataFrame,
     output_path: str | Path,
-    embed_js: bool = True,
+    currency_symbol: str,
 ) -> None:
     """Génère et sauvegarde un rapport financier HTML complet pour un ensemble de données."""
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    incomes_empty = incomes_df.empty
-    expenses_empty = expenses_df.empty
-    incomes_or_expenses_empty = incomes_empty or expenses_empty
+    incomes_or_expenses_empty = incomes_df.empty or expenses_df.empty
 
     # Traitement des données JS / Highcharts
     incomes_categories, expenses_categories = banking_db.get_category_lists()
-
-    json_data_bar = prepare_bar_chart_json(incomes_expenses_df)
-    json_data_evolution = _prepare_evolution_chart_json(incomes_expenses_df, incomes_categories, expenses_categories)
-    json_data_sankey = prepare_sankey_json(incomes_expenses_df)
-    json_data_sunburst = prepare_sunburst_json(incomes_df, expenses_df)
-
     years = sorted(incomes_expenses_df["year"].unique().tolist(), reverse=True) if not incomes_expenses_df.empty else []
 
-    # Inlining du code JS si demandé
-    highcharts_js_content = ""
-    if embed_js:
-        js_dir = Path("src/static/js")
-        js_files = ["highcharts.js", "sunburst.js", "sankey.js", "exporting.js"]
-        for js_file in js_files:
-            file_path = js_dir / js_file
-            if file_path.exists():
-                highcharts_js_content += f"\n/* --- {js_file} --- */\n" + file_path.read_text(encoding="utf-8")
+    data = {
+        "graph_id": uuid.uuid4().hex[:8],
+        "currency_symbol": currency_symbol,
+        "json_data_bar": prepare_bar_chart_json(incomes_expenses_df),
+        "json_data_evolution": prepare_evolution_chart_json(
+            incomes_expenses_df, incomes_categories, expenses_categories
+        ),
+        "json_data_sankey": prepare_sankey_json(incomes_expenses_df),
+        "json_data_sunburst": prepare_sunburst_json(incomes_df, expenses_df),
+        "incomes_list_json": json.dumps(incomes_categories, ensure_ascii=False),
+        "years_json": json.dumps(years),
+        "sankey_years": years,
+        "multiple_years": len(years) > 1,
+    }
 
-    # Compilation Jinja2
-    template_path = Path("src/static/template/bank.html")
-    template = Template(template_path.read_text(encoding="utf-8"))
+    # Fichiers JavaScript vendor
+    static_dir = Path("src/static")
+    vendor_dir = static_dir / "vendor"
+    bank_dir = static_dir / "bank"
 
-    rendered_html = template.render(
-        report_title="Bilan Financier",
-        graph_id=uuid.uuid4().hex[:8],
-        has_only_incomes_or_expenses=incomes_or_expenses_empty,
-        data_global_json=json_data_bar,
-        data_evolution_json=json_data_evolution,
-        sankey_data_json=json_data_sankey,
-        sunburst_data_json=json_data_sunburst,
-        incomes_list_json=json.dumps(incomes_categories, ensure_ascii=False),
-        years_json=json.dumps(years),
-        sankey_years=years,
-        multiple_years=len(years) > 1,
-        embed_js=embed_js,
-        highcharts_js=highcharts_js_content,
+    # Chargement des scripts vendor
+    vendor_files = [
+        "highcharts.js",
+        "sunburst.js",
+        "sankey.js",
+        "exporting.js",
+    ]
+    vendor_scripts = "\n".join(
+        [(vendor_dir / file).read_text(encoding="utf-8") for file in vendor_files if (vendor_dir / file).exists()]
     )
 
-    output_file.write_text(rendered_html, encoding="utf-8")
+    # Lecture du CSS et du JS
+    bank_css = (bank_dir / "bank.css").read_text(encoding="utf-8")
+    bank_js = (bank_dir / "bank.js").read_text(encoding="utf-8")
+
+    # Configuration de Jinja2
+    env = Environment(loader=FileSystemLoader(bank_dir))
+    template = env.get_template("bank.html")
+
+    # Rendu avec injection inline de toutes les ressources
+    html_rendu = template.render(
+        vendor_scripts=vendor_scripts,
+        bank_css=bank_css,
+        bank_js=bank_js,
+        has_only_incomes_or_expenses=incomes_or_expenses_empty,
+        data=data,
+    )
+
+    output_file.write_text(html_rendu, encoding="utf-8")
 
 
 def prepare_bar_chart_json(incomes_expenses_df: pd.DataFrame) -> str:
@@ -131,7 +153,7 @@ def prepare_bar_chart_json(incomes_expenses_df: pd.DataFrame) -> str:
     return json.dumps(data_dict, ensure_ascii=False)
 
 
-def _prepare_evolution_chart_json(
+def prepare_evolution_chart_json(
     incomes_expenses_df: pd.DataFrame, incomes_list: list[str], expenses_list: list[str]
 ) -> str:
     """Prépare la structure JSON pour le graphique d'évolution des flux."""

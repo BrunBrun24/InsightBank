@@ -1,17 +1,17 @@
-import os
 import shutil
 import threading
 from datetime import datetime
+from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
 import pandas as pd
 
-from accounts.banking.database.banking_db import BankingDB
 from accounts.banking.importers.data_extractor import DataExtractor
 from accounts.banking.processing.categorizer import Categorizer
-from accounts.banking.reporting.excel_generator import ExcelGenerator
-from accounts.banking.visualization.financial_chart import generate_all_reports
+from accounts.banking.reporting.excel_generator import excel_generate_all_reports
+from accounts.banking.visualization.financial_chart import chart_generate_all_reports
+from accounts.heritage.processing.processing import calculate_heritage
 from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
 from utils.data_utils import remove_accents
 from utils.loading_popup import LoadingPopup
@@ -23,8 +23,8 @@ class Operations:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__banking_db_path = self.__config["database"]["db_banking_path"]
-        self.__banking_db = BankingDB(self.__banking_db_path)
+        self.__banking_db = self.__controller.get_bank_db()
+        self.__stock_db = self.__controller.get_stock_db()
         self.__sort_column = "operation_date"
         self.__sort_ascending = False
 
@@ -99,6 +99,7 @@ class Operations:
 
         bank_account_id = bank_account_row["id"]
         items_per_page = 21
+        currency_symbol = self.__banking_db.get_bank_account_currency_symbol(bank_account_id)
 
         try:
             df = self.__banking_db.get_operations_by_bank_account(bank_account_id)
@@ -213,7 +214,7 @@ class Operations:
                     )
 
                     amt = operation["amount"]
-                    formatted_amt = f"{amt:,.2f}".replace(",", " ") + " €"
+                    formatted_amt = f"{amt:,.2f}".replace(",", " ") + f" {currency_symbol}"
                     color = self.__theme["red"]["fg_color"] if amt < 0 else self.__theme["green"]["fg_color"]
                     ctk.CTkLabel(row_f, text=formatted_amt, text_color=color, font=("Arial", 12, "bold")).grid(
                         row=0, column=5, padx=5, sticky="nsew"
@@ -516,17 +517,32 @@ class Operations:
         loading_win.close()
         self.__controller.show_bank_operations(bank_account_row)
 
-    def update_bilan(self, bank_account_id: int, bank_account_name: str) -> None:
+    def update_bilan(self, bank_account_id: int | None = None, bank_account_name: str | None = None) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un compte bancaire."""
+        paths = []
+        base_dest = Path(self.__config["destination_path"])
+        heritage_path = base_dest / "heritage" / "heritage_bank"
+        paths.append(heritage_path)
+        paths.append(base_dest / "heritage" / "heritage_global.html")
+        paths.append(base_dest / "heritage" / "heritage_global.xlsx")
 
-        # Supprime le dossier bilan du compte pour que les données soient à jour
-        path = os.path.join(f"{self.__config['destination_path']}/bank_account", bank_account_name)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        if bank_account_id is not None:
+            bank_path = base_dest / "bank_account" / bank_account_name
+            paths.append(bank_path)
 
-        # Créer les graphiques HTML
-        generate_all_reports(self.__banking_db, bank_account_id, bank_account_name)
+        # Nettoyage des répertoires existants
+        for path in paths:
+            if path.exists():
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
 
-        # Créer les fichiers Excel
-        excel_generator = ExcelGenerator(self.__banking_db, bank_account_name)
-        excel_generator.generate_all_reports(bank_account_id)
+        # Génération des graphiques et rapports Excel
+        if bank_account_id is not None:
+            chart_generate_all_reports(self.__banking_db, self.__stock_db, bank_path, bank_account_id)
+            excel_generate_all_reports(self.__banking_db, self.__stock_db, bank_path, bank_account_id)
+
+        chart_generate_all_reports(self.__banking_db, self.__stock_db, heritage_path)
+        excel_generate_all_reports(self.__banking_db, self.__stock_db, heritage_path)
+        calculate_heritage(self.__banking_db, self.__stock_db)

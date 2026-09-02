@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InsightBank — Dashboard Portefeuille</title>
+
+    <style>
+      {{ stock_css | safe }}
+    </style>
+
+    <script>
+      {{ vendor_scripts | safe }}
+    </script>
+  </head>
+  <body>
+    <div class="dashboard-header">
+      <h1>{{ portfolio_data.name }}</h1>
+    </div>
+
+    <!-- Barre de Navigation -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-portfolio', this)">
+        Vue Portefeuille & Métriques
+      </button>
+      <button class="tab-btn" onclick="switchTab('tab-investments', this)">
+        Analyse des Investissements
+      </button>
+    </div>
+
+    <!-- PAGE 1 : PORTEFEUILLE & MÉTRIQUES -->
+    <div id="tab-portfolio" class="tab-content active">
+      <!-- KPIs Principaux -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="title">Valeur du Portefeuille</div>
+          <div class="value" id="kpi-portfolio-value">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="title">Performance Globale</div>
+          <div class="value" id="kpi-portfolio-perf">-</div>
+        </div>
+        {% if portfolio_data.kpis and portfolio_data.kpis.has_dividends %}
+        <div class="kpi-card">
+          <div class="title">Dividendes Totaux</div>
+          <div class="value" id="kpi-portfolio-dividends">-</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="charts-grid">
+        <!-- Évolution du Portefeuille -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title">Évolution du Portefeuille</div>
+          </div>
+          <div id="chart-portfolio-gross-value" class="chart-container-large"></div>
+        </div>
+
+        <!-- Performance du Portefeuille -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title" id="perf-chart-title">
+              Performance du Portefeuille
+            </div>
+            <button class="toggle-btn" id="btn-toggle-perf" onclick="togglePerfView()">
+              Basculer en {{ portfolio_data.currency }}
+            </button>
+          </div>
+          <div id="chart-portfolio-performance" class="chart-container-large"></div>
+        </div>
+
+        <!-- Rendements Mensuels -->
+        <div class="chart-card">
+          <div id="chart-monthly-returns" class="chart-container-medium"></div>
+        </div>
+
+        <!-- Répartition -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title" id="repartition-chart-title">Répartition Actuelle</div>
+            <button
+              class="toggle-btn"
+              id="btn-toggle-repartition"
+              onclick="toggleRepartitionView()"
+            >
+              Vue Treemap
+            </button>
+          </div>
+          <div id="chart-repartition" class="chart-container-medium"></div>
+        </div>
+
+        {% if portfolio_data.kpis and portfolio_data.kpis.has_dividends %}
+        <div class="chart-card full-width">
+          <div id="chart-portfolio-dividends" class="chart-container-large"></div>
+        </div>
+        {% endif %}
+
+        <!-- SECTION RATIOS & RISQUES -->
+        <div class="section-divider">Ratios financiers & Analyse du risque</div>
+
+        <div class="kpi-grid full-width kpi-grid-no-margin">
+          <div class="kpi-card secondary">
+            <div class="title">Ratio de Sharpe</div>
+            <div class="value" id="kpi-sharpe">-</div>
+          </div>
+          <div class="kpi-card secondary">
+            <div class="title">Ratio de Sortino</div>
+            <div class="value" id="kpi-sortino">-</div>
+          </div>
+          <div class="kpi-card secondary">
+            <div class="title">Volatilité Annualisée</div>
+            <div class="value" id="kpi-volatility">-</div>
+          </div>
+        </div>
+
+        <!-- Matrice de Corrélation -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title">Matrice de Corrélation</div>
+            <div class="correlation-info">
+              Corrélation moyenne pondérée :
+              <strong id="kpi-avg-correlation" class="accent-text">-</strong>
+            </div>
+          </div>
+          <div id="chart-correlation" class="chart-container-large"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2 : INVESTISSEMENTS -->
+    <div id="tab-investments" class="tab-content">
+      <div class="charts-grid">
+        <!-- Évolution des Investissements vs Valorisation par Ticker (€) -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title" id="val-invest-chart-title">
+              Valorisation Boursière par Ticker
+            </div>
+            <div class="controls-group">
+              <select
+                class="toggle-btn"
+                id="select-val-invest-status"
+                onchange="renderValInvestChart()"
+                aria-label="Filtrer les positions par statut"
+              >
+                <option value="ALL">Toutes les positions</option>
+                <option value="OPEN" selected>Positions ouvertes</option>
+                <option value="CLOSED">Positions fermées</option>
+              </select>
+              <button
+                class="toggle-btn"
+                id="btn-toggle-val-invest"
+                onclick="toggleValInvestView()"
+              >
+                Basculer sur Montant Investi
+              </button>
+            </div>
+          </div>
+          <div id="chart-val-invest-evolution" class="chart-container-large"></div>
+        </div>
+
+        <!-- Évolution Tickers avec Switch % / € -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title" id="tickers-chart-title">
+              Plus-Value Latente par Ticker
+            </div>
+            <div class="controls-group">
+              <select
+                class="toggle-btn"
+                id="select-ticker-status"
+                onchange="renderTickersChart()"
+                aria-label="Filtrer les tickers par statut"
+              >
+                <option value="ALL">Toutes les positions</option>
+                <option value="OPEN" selected>Positions ouvertes</option>
+                <option value="CLOSED">Positions fermées</option>
+              </select>
+              <button
+                class="toggle-btn"
+                id="btn-toggle-tickers"
+                onclick="toggleTickersView()"
+              >
+                Basculer en {{ portfolio_data.currency }}
+              </button>
+            </div>
+          </div>
+          <div id="chart-tickers-evolution" class="chart-container-large"></div>
+        </div>
+
+        <!-- Comparaison par Transaction vs Benchmark -->
+        {% if portfolio_data.name != "Tous les Portefeuilles" %}
+          <div class="chart-card full-width">
+            <div class="chart-header">
+              <div class="chart-title">Comparaison de Performance par Transaction vs Benchmark</div>
+              <div class="controls-group">
+                <select 
+                  class="toggle-btn" 
+                  id="select-compare-ticker" 
+                  onchange="onCompareTickerChange()"
+                  aria-label="Sélectionner le ticker à comparer"
+                >
+                </select>
+                <select 
+                  class="toggle-btn" 
+                  id="select-compare-date" 
+                  onchange="renderCompareTxChart()"
+                  aria-label="Sélectionner la date de transaction"
+                >
+                </select>
+              </div>
+            </div>
+            <div id="chart-compare-tx" class="chart-container-large"></div>
+          </div>
+        {% endif %}
+
+        <!-- Dividendes par Ticker -->
+        {% if portfolio_data.kpis and portfolio_data.kpis.has_dividends %}
+        <div class="chart-card full-width">
+          <div id="chart-dividends" class="chart-container-large"></div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      window.portfolioData = {{ portfolio_data | tojson | safe }};
+      
+      {{ stock_js | safe }}
+    </script>
+  </body>
+</html>

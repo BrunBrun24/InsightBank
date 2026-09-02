@@ -5,6 +5,7 @@ import pandas as pd
 import yfinance as yf
 
 from accounts.stock.importers.fetch_stock import fetch_stock_data
+from config import load_config, update_config_last_login
 
 from ...shared.database_base import DatabaseBase
 
@@ -35,10 +36,10 @@ class StockDB(DatabaseBase):
             "AUDUSD=X",  # Dollar Australien / US Dollar
             "EURNZD=X",  # Euro / Dollar Néo-Zélandais
             "NZDUSD=X",  # Dollar Néo-Zélandais / US Dollar
-            "^GSPC",  # S&P 500
-            "^FCHI",  # CAC 40
-            "^IXIC",  # NASDAQ
-            "URTH",  # MSCI World
+            "^GSPC",     # S&P 500
+            "^FCHI",     # CAC 40
+            "^IXIC",     # NASDAQ
+            "URTH",      # MSCI World
         ]
 
         # Ajoute les données de conversion pour chaque symbol
@@ -49,7 +50,11 @@ class StockDB(DatabaseBase):
                 extracted_data, isin_ticker_add = fetch_stock_data(self, df)
                 tickers_to_add = [isin_ticker["ticker"] for isin_ticker in isin_ticker_add]
                 self.add_data_tickers(tickers_to_add, extracted_data)
-        self.__stock_update()
+
+        if self.__should_update_stock():
+            self.__stock_update()
+
+        update_config_last_login()
 
     def get_all_portfolios(self) -> pd.DataFrame:
         query = """
@@ -66,6 +71,17 @@ class StockDB(DatabaseBase):
         """
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn)
+
+    def get_portfolio_currency_symbol(self, portfolio_id: int) -> str:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT currency FROM portfolio WHERE id = ?", (portfolio_id,))
+            result = cursor.fetchone()[0]
+
+        if result == "EUR":
+            return "€"
+        elif result == "USD":
+            return "$"
 
     def get_portfolio_currency(self, portfolio_id: int) -> str:
         with self._get_connection() as conn:
@@ -118,6 +134,118 @@ class StockDB(DatabaseBase):
         with self._get_connection() as conn:
             return pd.read_sql_query(query, conn, params=(portfolio_id,))
 
+    def get_all_transactions_converted(self, target_currency: str) -> pd.DataFrame:
+        """
+        Récupère l'ensemble des transactions et convertit leurs montants dans la
+        devise cible à la date exacte de chaque transaction via l'historique FX.
+        """
+        # Récupération de l'ensemble des transactions avec leur devise source
+        query_tx = """
+                SELECT 
+                pt.id,
+                pt.portfolio_id,
+                p.currency AS currency,
+                pt.portfolio_ticker_id,
+                s.ticker AS ticker,
+                s.company_name AS name,
+                pt.type,
+                pt.date,
+                pt.shares,
+                pt.original_amount,
+                pt.original_price,
+                pt.original_fee,
+                pt.amount,
+                pt.price,
+                pt.fee
+            FROM portfolio_transaction pt
+            JOIN portfolio p ON pt.portfolio_id = p.id
+            LEFT JOIN portfolio_ticker pot ON pt.portfolio_ticker_id = pot.id
+            LEFT JOIN stock s ON pot.ticker = s.ticker
+            ORDER BY pt.date ASC, pt.id ASC
+        """
+        with self._get_connection() as conn:
+            df = pd.read_sql_query(query_tx, conn)
+
+        if df.empty:
+            return df
+
+        # Identifie toutes les devises sources distinctes (excluant la devise cible)
+        source_currencies = [c for c in df["currency"].unique() if c != target_currency]
+
+        if not source_currencies:
+            df["fx_rate"] = 1.0
+            return df
+
+        # Construction des tickers FX nécessaires
+        fx_tickers = []
+        for curr in source_currencies:
+            fx_tickers.extend([f"{curr}{target_currency}=X", f"{target_currency}{curr}=X"])
+
+        placeholders = ",".join(["?"] * len(fx_tickers))
+        query_fx = f"""
+            SELECT date, ticker, close_price 
+            FROM stock_price 
+            WHERE ticker IN ({placeholders}) 
+            ORDER BY date ASC
+        """
+
+        with self._get_connection() as conn:
+            fx_df = pd.read_sql_query(query_fx, conn, params=fx_tickers)
+
+        # Traitement des cours par paire de devises
+        rates_list = []
+        for curr in source_currencies:
+            direct_ticker = f"{curr}{target_currency}=X"
+            inverse_ticker = f"{target_currency}{curr}=X"
+
+            sub_fx = fx_df[fx_df["ticker"].isin([direct_ticker, inverse_ticker])].copy()
+            if sub_fx.empty:
+                continue
+
+            # Séparation direct / inverse
+            direct = sub_fx[sub_fx["ticker"] == direct_ticker][["date", "close_price"]].rename(
+                columns={"close_price": "fx_rate"}
+            )
+            if not direct.empty:
+                curr_rates = direct
+            else:
+                inverse = sub_fx[sub_fx["ticker"] == inverse_ticker][["date", "close_price"]]
+                inverse["fx_rate"] = 1.0 / inverse["close_price"]
+                curr_rates = inverse[["date", "fx_rate"]]
+
+            curr_rates["currency"] = curr
+            rates_list.append(curr_rates)
+
+        if rates_list:
+            all_fx_rates = pd.concat(rates_list, ignore_index=True)
+        else:
+            all_fx_rates = pd.DataFrame(columns=["date", "fx_rate", "currency"])
+
+        # Conversion et alignement temporel via merge_asof (par devise)
+        df["date"] = pd.to_datetime(df["date"])
+        all_fx_rates["date"] = pd.to_datetime(all_fx_rates["date"])
+
+        df = df.sort_values("date")
+        all_fx_rates = all_fx_rates.sort_values("date")
+
+        df = pd.merge_asof(
+            df,
+            all_fx_rates,
+            on="date",
+            by="currency",
+            direction="backward",
+        )
+        df["fx_rate"] = df["fx_rate"].fillna(1.0)
+
+        # Calcul des montants convertis
+        df["amount"] = (df["amount"] * df["fx_rate"]).round(2)
+        df["price"] = (df["price"] * df["fx_rate"]).round(2)
+        df["fee"] = (df["fee"] * df["fx_rate"]).round(2)
+
+        df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+
+        return df
+
     def get_transaction_by_id(self, transaction_id: int) -> dict | None:
         query = """
             SELECT pt.*, pt_tick.ticker
@@ -143,29 +271,98 @@ class StockDB(DatabaseBase):
             res = cursor.fetchone()
             return res[0]
 
-    def get_tickers_prices(self, portfolio_id: int, tickers: list[str], first_date: str) -> pd.DataFrame:
+    def get_currency_conversion_rates(self, source_currency: str, target_currency: str) -> pd.Series:
+        """Calcule la série temporelle du taux de conversion (multiplicateur)."""
+        # Même devise : multiplicateur neutre 1.0
+        if source_currency == target_currency:
+            query = "SELECT DISTINCT date FROM stock_price ORDER BY date ASC"
+            with self._get_connection() as conn:
+                df = pd.read_sql_query(query, conn)
+            if df.empty:
+                return pd.Series(dtype=float)
+            df["date"] = pd.to_datetime(df["date"])
+            return pd.Series(1.0, index=df["date"])
+
+        # Format du ticker Yahoo Finance : Ex "EURUSD=X" donne le prix de 1 EUR en USD
+        fx_ticker = f"{source_currency}{target_currency}=X"
+        is_inverse = False
+
+        query = """
+            SELECT date, close_price 
+            FROM stock_price 
+            WHERE ticker = ? 
+            ORDER BY date ASC
+        """
+        with self._get_connection() as conn:
+            df = pd.read_sql_query(query, conn, params=(fx_ticker,))
+
+        # Si le ticker direct n'existe pas, on tente la paire inverse (ex: "USDEUR=X")
+        if df.empty:
+            fx_ticker_reverse = f"{target_currency}{source_currency}=X"
+            with self._get_connection() as conn:
+                df = pd.read_sql_query(query, conn, params=(fx_ticker_reverse,))
+            is_inverse = True
+
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        df["date"] = pd.to_datetime(df["date"])
+        series = df.set_index("date")["close_price"].ffill()
+
+        # Si on a utilisé le ticker inverse, le taux multiplicateur est 1 / prix
+        if is_inverse:
+            return 1.0 / series
+
+        return series
+
+    def get_tickers_prices(
+        self, portfolio_id: int | None, tickers: list[str], first_date: str, target_currency: str | None = None
+    ) -> pd.DataFrame:
+        if not tickers:
+            return pd.DataFrame()
+
         placeholders = ",".join(["?"] * len(tickers))
 
-        query = f"""
-            SELECT 
-                sp.date,
-                sp.ticker,
-                sp.close_price,
-                s.currency AS stock_currency,
-                p.currency AS portfolio_currency,
-                fx.close_price AS fx_rate
-            FROM stock_price sp
-            JOIN stock s ON sp.ticker = s.ticker
-            JOIN portfolio p ON p.id = ?
-            LEFT JOIN stock_price fx 
-                   ON fx.ticker = p.currency || s.currency || '=X' 
-                  AND fx.date = sp.date
-            WHERE sp.ticker IN ({placeholders}) 
-              AND sp.date >= ?
-            ORDER BY sp.ticker ASC, sp.date ASC;
-        """
-
-        params = [portfolio_id] + list(tickers) + [first_date]
+        if portfolio_id is not None:
+            query = f"""
+                SELECT 
+                    sp.date,
+                    sp.ticker,
+                    sp.close_price,
+                    s.currency AS stock_currency,
+                    p.currency AS target_currency,
+                    fx.close_price AS fx_rate
+                FROM stock_price sp
+                JOIN stock s ON sp.ticker = s.ticker
+                JOIN portfolio p ON p.id = ?
+                LEFT JOIN stock_price fx 
+                       ON fx.ticker = p.currency || s.currency || '=X' 
+                      AND fx.date = sp.date
+                WHERE sp.ticker IN ({placeholders}) 
+                  AND sp.date >= ?
+                ORDER BY sp.ticker ASC, sp.date ASC;
+            """
+            params = [portfolio_id] + list(tickers) + [first_date]
+        else:
+            # Retourne tous les tickers de la bdd
+            query = f"""
+                SELECT 
+                    sp.date,
+                    sp.ticker,
+                    sp.close_price,
+                    s.currency AS stock_currency,
+                    ? AS target_currency,
+                    fx.close_price AS fx_rate
+                FROM stock_price sp
+                JOIN stock s ON sp.ticker = s.ticker
+                LEFT JOIN stock_price fx 
+                       ON fx.ticker = ? || s.currency || '=X' 
+                      AND fx.date = sp.date
+                WHERE sp.ticker IN ({placeholders}) 
+                  AND sp.date >= ?
+                ORDER BY sp.ticker ASC, sp.date ASC;
+            """
+            params = [target_currency, target_currency] + list(tickers) + [first_date]
 
         with self._get_connection() as conn:
             df = pd.read_sql_query(query, conn, params=params)
@@ -173,15 +370,15 @@ class StockDB(DatabaseBase):
         if df.empty:
             return pd.DataFrame()
 
-        # Calcul du prix converti : conversion si devises différentes, sinon prix d'origine
-        df["converted_price"] = df.apply(
-            lambda row: (
-                row["close_price"] / row["fx_rate"]
-                if row["stock_currency"] != row["portfolio_currency"] and pd.notna(row["fx_rate"])
-                else row["close_price"]
-            ),
-            axis=1,
-        )
+        # Initialisation de la colonne de conversion
+        df["converted_price"] = df["close_price"].astype(float)
+
+        # Masque pour identifier les lignes nécessitant une conversion de devise
+        mask = (df["stock_currency"] != df["target_currency"]) & df["fx_rate"].notna()
+
+        # Application de la conversion uniquement si le masque sélectionne au moins une ligne
+        if mask.any():
+            df.loc[mask, "converted_price"] = df.loc[mask, "close_price"] / df.loc[mask, "fx_rate"]
 
         df["date"] = pd.to_datetime(df["date"])
         df_pivoted = df.pivot(index="date", columns="ticker", values="converted_price")
@@ -224,6 +421,45 @@ class StockDB(DatabaseBase):
                 """,
                 (ticker, date),
             )
+            res = cursor.fetchone()
+            return res[0] if res else None
+
+    def get_latest_fx_rate(
+        self,
+        source_currency: str,
+        target_currency: str,
+    ) -> float | None:
+        """Récupère le tout dernier taux de change disponible entre deux devises."""
+        if source_currency == target_currency:
+            return 1.0
+
+        direct_ticker = f"{source_currency}{target_currency}=X"
+        inverse_ticker = f"{target_currency}{source_currency}=X"
+
+        # Recherche du dernier cours pour le ticker direct
+        direct_rate = self.__get_latest_price_by_ticker(direct_ticker)
+        if direct_rate is not None:
+            return float(direct_rate)
+
+        # Recherche du dernier cours pour le ticker inverse (1 / taux)
+        inverse_rate = self.__get_latest_price_by_ticker(inverse_ticker)
+        if inverse_rate is not None and inverse_rate != 0:
+            return float(1.0 / inverse_rate)
+
+        return None
+
+    def __get_latest_price_by_ticker(self, ticker: str) -> float | None:
+        """Exécute la requête SQL pour récupérer la valeur la plus récente d'un ticker."""
+        query = """
+            SELECT close_price 
+            FROM stock_price 
+            WHERE ticker = ? 
+            ORDER BY date DESC 
+            LIMIT 1
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (ticker,))
             res = cursor.fetchone()
             return res[0] if res else None
 
@@ -648,3 +884,28 @@ class StockDB(DatabaseBase):
                 )
 
             conn.commit()
+
+    def __should_update_stock(self) -> bool:
+        """Vérifie si la mise à jour doit être exécutée."""
+        config = load_config()
+        last_login_str = config.get("last_login_at")
+        now = datetime.now()
+
+        # Avant 8h du matin, aucune mise à jour
+        if now.hour < 8:
+            return False
+
+        # Si aucune date n'est enregistrée, exécuter la mise à jour
+        if not last_login_str:
+            return True
+
+        # Conversion du texte en objet datetime complet
+        last_login_dt = datetime.strptime(last_login_str, "%Y-%m-%d %H:%M:%S")
+        today = now.date()
+
+        # Exécution si la dernière date était un jour précédent
+        if last_login_dt.date() < today:
+            return True
+
+        # Exécution si même jour, il est 20h+ et la dernière exécution s'est faite avant 20h
+        return bool(last_login_dt.date() == today and now.hour >= 20 and last_login_dt.hour < 20)

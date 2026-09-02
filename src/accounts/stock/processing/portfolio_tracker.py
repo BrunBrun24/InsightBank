@@ -6,17 +6,22 @@ from config import load_config
 
 
 class PortfolioTracker:
-    def __init__(self, db_stock: StockDB, portfolio_id: int) -> None:
+    def __init__(self, db_stock: StockDB, portfolio_id: int | None = None) -> None:
         self.__stock_db = db_stock
         self.__portfolio_id = portfolio_id
         self.__config = load_config()
         self.__benchmark = self.__config["benchmark"]
-
-    def run(self) -> bool:
         self.__transactions = self.__stock_db.get_transactions_by_stock_account(self.__portfolio_id).sort_values(
             by="date"
         )
-        if self.__transactions.empty:
+
+    def set_transactions(self, tx: pd.DataFrame) -> None:
+        self.__transactions = tx
+
+    def validate(self, target_currency: str | None = None) -> bool:
+        """Vérifie si on peut calculer la performance du portefeuille"""
+
+        if self.__transactions.empty and self.__portfolio_id is not None:
             self.__stock_db.update_portfolio_amount(self.__portfolio_id, 0)
             return False
 
@@ -24,7 +29,8 @@ class PortfolioTracker:
         if not self.__tickers:
             deposits = self.__transactions[self.__transactions["type"].isin(["deposit", "withdrawal"])]
             amount = float((deposits["amount"] - deposits["fee"]).sum()) if not deposits.empty else 0.0
-            self.__stock_db.update_portfolio_amount(self.__portfolio_id, amount)
+            if self.__portfolio_id:
+                self.__stock_db.update_portfolio_amount(self.__portfolio_id, amount)
             return False
         else:
             self.__tickers.append(self.__benchmark)
@@ -35,9 +41,8 @@ class PortfolioTracker:
         )
 
         self.__start_date = str(self.__transactions.iloc[0]["date"])
-
         self.__ticker_prices = self.__stock_db.get_tickers_prices(
-            self.__portfolio_id, self.__tickers, self.__start_date
+            self.__portfolio_id, self.__tickers, self.__start_date, target_currency
         )
         if self.__ticker_prices.empty:
             return False
@@ -45,6 +50,12 @@ class PortfolioTracker:
         self.__end_date = str(self.__ticker_prices.index[-1])
         full_date_range = pd.date_range(start=self.__start_date, end=self.__end_date, freq="D")
         self.__ticker_prices = self.__ticker_prices.reindex(full_date_range).ffill().bfill()
+
+        return True
+
+    def run(self, target_currency: str | None = None) -> bool:
+        if not self.validate(target_currency):
+            return False
 
         self.__ticker_splits = self.__stock_db.get_stock_splits(self.__tickers, self.__start_date)
         self.__ticker_shares = self.__calculate_daily_shares()
@@ -77,7 +88,7 @@ class PortfolioTracker:
             (self.__ticker_latent_gains / self.__ticker_investments.replace(0, np.nan)) * 100
         ).fillna(0)
         self.__portfolio_pct = self.__calculate_portfolio_percentage_change()
-        self.__benchmark_pct = self.__calculate_benchmark_pct()
+        self.__benchmark_gains, self.__benchmark_pct = self.__calculate_benchmark_gains_pct()
         self.__portfolio_daily_returns = self.__portfolio_percentage_per_day()
         self.__portfolio_monthly_returns = self.__monthly_simple_return()
         self.__portfolio_repartition = self.__compute_portfolio_repartition()
@@ -92,6 +103,15 @@ class PortfolioTracker:
         self.__benchmark_tx_latent_gains, self.__benchmark_tx_pct = self.__transactions_details(tx, True)
 
         return True
+
+    def heritage_portfolio_values(self, target_currency: str | None = None) -> pd.Series:
+        if not self.validate(target_currency):
+            return pd.Series()
+
+        self.__ticker_splits = self.__stock_db.get_stock_splits(self.__tickers, self.__start_date)
+        self.__ticker_shares = self.__calculate_daily_shares()
+        self.__ticker_values = self.__ticker_shares * self.__ticker_prices
+        return self.__ticker_values.sum(axis=1)
 
     @property
     def ticker_prices(self) -> pd.DataFrame:
@@ -201,8 +221,16 @@ class PortfolioTracker:
         )
 
     @property
+    def benchmark_gains(self) -> pd.Series:
+        return self.__benchmark_gains.round(2)
+
+    @property
     def benchmark_pct(self) -> pd.Series:
         return self.__benchmark_pct
+
+    @property
+    def initial_invested_amount(self) -> float:
+        return self.__initial_invested_amount()
 
     @property
     def transactions(self) -> pd.DataFrame:
@@ -609,27 +637,55 @@ class PortfolioTracker:
         return daily_returns_series.fillna(0.0)
 
     def __monthly_simple_return(self) -> pd.Series:
-        """Calcule le pourcentage de gain/perte brut mensuel du portefeuille."""
-        monthly_val = self.__portfolio_gross_value.resample("ME").last()
-        monthly_start_val = monthly_val.shift(1).fillna(0.0)
+        """
+        Calcule le pourcentage de rendement mensuel des investissements (TWR).
+        Se base sur l'évolution de la plus-value globale (portfolio_total_gains)
+        en neutralisant les apports et retraits de capital externe.
+        """
+        # 1. Plus-value globale en fin de mois (Latente + Réalisée)
+        monthly_gains = self.__portfolio_total_gains.resample("ME").last()
+        monthly_start_gains = monthly_gains.shift(1).fillna(0.0)
+
+        # 2. Capital total investi (au PRU) en fin de mois
+        monthly_invested = self.__ticker_investments.sum(axis=1).resample("ME").last()
+        monthly_start_invested = monthly_invested.shift(1).fillna(0.0)
+
+        # 3. Récupération des dépôts/retraits (flux de capital externe)
         ext_tx = self.__transactions[self.__transactions["type"].isin(["deposit", "withdrawal"])].copy()
 
         if not ext_tx.empty:
             ext_tx["date"] = pd.to_datetime(ext_tx["date"])
-            ext_tx["net_flow"] = np.where(ext_tx["type"] == "deposit", ext_tx["amount"].abs(), -ext_tx["amount"].abs())
+            ext_tx["net_flow"] = np.where(
+                ext_tx["type"] == "deposit",
+                ext_tx["amount"].abs(),
+                -ext_tx["amount"].abs(),
+            )
             monthly_flows = (
-                ext_tx.groupby("date")["net_flow"].sum().resample("ME").sum().reindex(monthly_val.index, fill_value=0.0)
+                ext_tx.groupby("date")["net_flow"]
+                .sum()
+                .resample("ME")
+                .sum()
+                .reindex(monthly_gains.index, fill_value=0.0)
             )
         else:
-            monthly_flows = pd.Series(0.0, index=monthly_val.index)
+            monthly_flows = pd.Series(0.0, index=monthly_gains.index)
 
-        monthly_gain_euro = monthly_val - monthly_start_val - monthly_flows
-        capital_engaged = monthly_start_val + np.maximum(0.0, monthly_flows)
+        # 4. Gain net du mois (variation de la plus-value totale)
+        monthly_gain_euro = monthly_gains - monthly_start_gains
 
+        # 5. Base du capital investi engagé durant le mois
+        # (Capital investi en début de mois + apports nets du mois)
+        capital_base = monthly_start_invested + np.maximum(0.0, monthly_flows)
+
+        # 6. Calcul du rendement en pourcentage
         with np.errstate(divide="ignore", invalid="ignore"):
-            monthly_pct = np.where(capital_engaged > 0.0, (monthly_gain_euro / capital_engaged) * 100, 0.0)
+            monthly_pct = np.where(
+                capital_base > 0.0,
+                (monthly_gain_euro / capital_base) * 100.0,
+                0.0,
+            )
 
-        return pd.Series(monthly_pct, index=monthly_val.index).round(2)
+        return pd.Series(monthly_pct, index=monthly_gains.index).round(2)
 
     def __compute_portfolio_repartition(self) -> dict[str, float]:
         total_money = self.__portfolio_values.iloc[-1]
@@ -738,7 +794,7 @@ class PortfolioTracker:
             # Calcul du pourcentage
             for date in dates:
                 if is_benchmark:
-                    buy_price = tickers_prices.loc[date, ticker]
+                    buy_price = tickers_prices[ticker].asof(date)
                 else:
                     buy_price = tx_buy_sell.loc[tx_buy_sell["date"] == date, "price"].values[0]
 
@@ -757,7 +813,7 @@ class PortfolioTracker:
 
         return transactions_latent_gains, transactions_pct
 
-    def __calculate_benchmark_pct(self) -> pd.Series:
+    def __calculate_benchmark_gains_pct(self) -> tuple[pd.Series, pd.Series]:
         """Simule l'évolution globale du portefeuille si tous les flux avaient été investis dans le benchmark."""
         trade_tx = self.__transactions[self.__transactions["type"].isin(["buy", "sell"])].copy()
         if trade_tx.empty:
@@ -832,4 +888,4 @@ class PortfolioTracker:
         else:
             benchmark_pct = pd.Series(0.0, index=self.__ticker_prices.index)
 
-        return benchmark_pct.fillna(0.0).round(2)
+        return total_gains, benchmark_pct.fillna(0.0).round(2)

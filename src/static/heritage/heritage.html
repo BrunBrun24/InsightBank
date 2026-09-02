@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tableau de Bord Patrimonial</title>
+    
+    <style>
+        {{ heritage_css | safe }}
+    </style>
+
+    <script>
+        {{ vendor_scripts | safe }}
+    </script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <h1 class="dashboard-title">Tableau de Bord Patrimonial</h1>
+
+        <!-- Patrimoine Global -->
+        <div id="heritage-global-chart" class="chart-card"></div>
+
+        <!-- Évolution Annuelle & Répartition Actuelle -->
+        <div class="charts-row">
+            <!-- Évolution Annuelle -->
+            <div id="yearly-growth-chart" class="chart-card chart-card-half"></div>
+            
+            <!-- Répartition Actuelle -->
+            <div id="distribution-chart" class="chart-card chart-card-half"></div>
+        </div>
+
+        <!-- Détaillé par compte -->
+        <div id="heritage-accounts-chart" class="chart-card"></div>
+    </div>
+
+    <script>
+        // On parse la chaîne JSON globale une seule fois
+        window.heritage_data = {{ data | safe }};
+
+        // Accès direct aux propriétés
+        window.CURRENCY = window.heritage_data.currency;
+        window.HERITAGE_SERIES_DATA = window.heritage_data.heritageSeries;
+        window.ACCOUNTS_DATA = window.heritage_data.accountsSeries;
+        window.DISTRIBUTION_DATA = window.heritage_data.distribution;
+        window.YEARLY_GROWTH_DATA = window.heritage_data.yearlyGrowth;
+
+        {{ heritage_js | safe }}
+    </script>
+</body>
+</html>

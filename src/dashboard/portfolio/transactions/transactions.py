@@ -1,18 +1,32 @@
-import os
 import shutil
 import threading
 from datetime import datetime
+from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from accounts.heritage.processing.processing import calculate_heritage
 from accounts.stock.importers.data_extractor import DataExtractor
 from accounts.stock.importers.fetch_stock import fetch_stock_data, get_ticker_from_isin
+from accounts.stock.processing.compute_metrics import (
+    calculate_stocks_correlation_matrix,
+    calculate_volatility_portfolio,
+    compute_deposit_evolution,
+    compute_portfolio_repartition,
+    monthly_simple_returns,
+    portfolio_percentage_per_day,
+    sharpe_ratio,
+    sortino_ratio,
+    weighted_average_correlation,
+)
 from accounts.stock.processing.portfolio_tracker import PortfolioTracker
 from accounts.stock.reporting.stock_excel_generator import StockExcelGenerator
-from accounts.stock.visualization.portfolio_exporter import generate_rapport
+from accounts.stock.visualization.portfolio_exporter import chart_generate_rapport
+from config import load_config
 from dashboard.portfolio.transactions.components.transaction_edit_window import TransactionEditWindow
 from utils.data_utils import remove_accents
 from utils.loading_popup import LoadingPopup
@@ -23,7 +37,8 @@ class Transactions:
         self.__master = master
         self.__controller = controller
         self.__theme = controller.get_theme()
-        self.__stock_db = controller.get_db_stock()
+        self.__banking_db = controller.get_bank_db()
+        self.__stock_db = controller.get_stock_db()
         self.__config = controller.get_config()
         self.__sort_column = "date"
         self.__sort_ascending = False
@@ -928,35 +943,192 @@ class Transactions:
 
         return 1.0
 
-    def update_bilan(self, portfolio_id: int, portfolio_name: str) -> None:
+    def update_bilan(self, portfolio_id: int | None = None, portfolio_name: str | None = None) -> None:
         """Coordonne la mise à jour complète des fichiers bilan pour un portefeuille."""
+        paths = []
+        base_dest = Path(self.__config["destination_path"])
+        heritage_path = base_dest / "heritage" / "heritage_stock"
+        paths.append(heritage_path)
+        paths.append(base_dest / "heritage" / "heritage_global.html")
+        paths.append(base_dest / "heritage" / "heritage_global.xlsx")
 
-        # Supprime le dossier bilan du compte pour que les données soient à jour
-        path = os.path.join(f"{self.__config['destination_path']}/stock", portfolio_name)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        if portfolio_id is not None:
+            stock_path = base_dest / "stock" / portfolio_name
+            paths.append(stock_path)
+
+        # Nettoyage des répertoires existants
+        for path in paths:
+            if path.exists():
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
 
         portfolio_tracker = PortfolioTracker(self.__stock_db, portfolio_id)
-        if not portfolio_tracker.run():
-            return
+        if portfolio_tracker.run():
+            if portfolio_id is not None:
+                chart_generate_rapport(self.__stock_db, portfolio_name, stock_path, portfolio_tracker, portfolio_id)
+                currency_symbol = self.__stock_db.get_portfolio_currency_symbol(portfolio_id)
+                excel_generator = StockExcelGenerator(portfolio_tracker, stock_path, currency_symbol, portfolio_name)
+                excel_generator.generate_report()
 
-        file_name = f"{self.__config['destination_path']}/stock/{portfolio_name}/Bilan {portfolio_name}"
-        
-        generate_rapport(
-            self.__stock_db,
-            portfolio_id,
-            portfolio_tracker,
-            f"{file_name}.html",
-        )
+            self.__update_bilan_all_portfolios(heritage_path)
 
-        currency = self.__stock_db.get_portfolio_currency(portfolio_id)
-        currency_symbol = None
-        if currency == "EUR":
-            currency_symbol = "€"
-        elif currency == "USD":
-            currency_symbol = "$"
+        calculate_heritage(self.__banking_db, self.__stock_db)
 
-        excel_generator = StockExcelGenerator(portfolio_tracker, portfolio_name, f"{file_name}.xlsx", currency_symbol)
+    def __update_bilan_all_portfolios(self, heritage_path: str) -> None:
+        # Regroupement par devises et consolidation dans la devise cible
+        target_currency = load_config()["currency"]
+        currency_symbol = "€" if target_currency == "EUR" else "$"
+        portfolios = self.__stock_db.get_all_portfolios()
+
+        # Dictionnaires d'accumulation pour l'ensemble du patrimoine
+        aggregated_metrics = {
+            "currency": target_currency,
+            "portfolio_gross_value": None,
+            "portfolio_values": None,
+            "portfolio_deposit": None,
+            "portfolio_cash": 0.0,
+            "portfolio_pct": None,
+            "portfolio_monthly_returns": None,
+            "portfolio_total_gains": None,
+            "portfolio_latent_gain": None,
+            "portfolio_dividends": None,
+            "benchmark_pct": None,
+            "weighted_average_correlation": 0.0,
+            "benchmark_gains": None,
+            "ticker_investments": None,
+            "ticker_values": None,
+            "ticker_dividends": None,
+            "ticker_latent_gains": None,
+            "ticker_latent_gains_pct": None,
+            "initial_invested_amount": 0.0,
+            "portfolio_daily_returns": None,
+            "ticker_shares": None,
+        }
+
+        if not portfolios.empty:
+            grouped = portfolios.groupby("currency")
+
+            for currency, group in grouped:
+                # Récupération et combinaison des transactions pour tous les portefeuilles de cette devise
+                currency_transactions = []
+                for p_id in group["id"]:
+                    df = self.__stock_db.get_transactions_by_stock_account(p_id)
+                    if not df.empty:
+                        currency_transactions.append(df)
+
+                if not currency_transactions:
+                    continue
+
+                combined_df = pd.concat(currency_transactions, ignore_index=True).sort_values(by="date", ascending=True)
+
+                # Calcul de performance pour ce groupe de même devise
+                group_tracker = PortfolioTracker(self.__stock_db)
+                group_tracker.set_transactions(combined_df)
+                group_tracker.run(currency)
+
+                # Conversion du résultat dans la devise cible si nécessaire
+                rate = 1.0
+                if currency != target_currency:
+                    rate = self.__stock_db.get_latest_fx_rate(currency, target_currency)
+
+                # Addition des métriques converties dans les totaux globaux
+                aggregated_metrics["portfolio_cash"] += group_tracker.portfolio_cash * rate
+                aggregated_metrics["initial_invested_amount"] += group_tracker.initial_invested_amount * rate
+
+                # Cumul des séries et DataFrames temporels
+                for key in [
+                    "portfolio_gross_value",
+                    "portfolio_values",
+                    "portfolio_dividends",
+                    "portfolio_latent_gain",
+                    "portfolio_total_gains",
+                    "benchmark_gains",
+                    "ticker_investments",
+                    "ticker_values",
+                    "ticker_dividends",
+                    "ticker_latent_gains",
+                    "ticker_shares",
+                ]:
+                    metric_val = getattr(group_tracker, key, None)
+                    if metric_val is not None:
+                        converted_val = metric_val * rate
+                        if aggregated_metrics[key] is None:
+                            aggregated_metrics[key] = converted_val
+                        else:
+                            aggregated_metrics[key] = aggregated_metrics[key].add(converted_val, fill_value=0)
+
+            aggregated_metrics["transactions"] = self.__stock_db.get_all_transactions_converted(target_currency)
+            aggregated_metrics["portfolio_pct"] = (
+                aggregated_metrics["portfolio_total_gains"] * 100 / aggregated_metrics["initial_invested_amount"]
+            ).round(2)
+            aggregated_metrics["benchmark_pct"] = (
+                aggregated_metrics["benchmark_gains"] * 100 / aggregated_metrics["initial_invested_amount"]
+            ).round(2)
+            aggregated_metrics["monthly_simple_returns"] = monthly_simple_returns(
+                aggregated_metrics["portfolio_gross_value"], aggregated_metrics["transactions"]
+            ).round(2)
+            aggregated_metrics["portfolio_monthly_returns"] = aggregated_metrics["monthly_simple_returns"]
+            aggregated_metrics["portfolio_repartition"] = compute_portfolio_repartition(
+                aggregated_metrics["portfolio_values"], aggregated_metrics["ticker_values"]
+            )
+            aggregated_metrics["portfolio_daily_returns"] = portfolio_percentage_per_day(
+                aggregated_metrics["portfolio_values"], aggregated_metrics["transactions"]
+            ).round(2)
+            aggregated_metrics["ticker_prices"] = self.__stock_db.get_tickers_prices(
+                None,
+                aggregated_metrics["ticker_investments"].columns.to_list(),
+                aggregated_metrics["ticker_investments"].index[0].strftime("%Y-%m-%d"),
+                target_currency,
+            )
+            aggregated_metrics["sharpe_ratio"] = sharpe_ratio(aggregated_metrics["portfolio_daily_returns"])
+            aggregated_metrics["sortino_ratio"] = sortino_ratio(aggregated_metrics["portfolio_daily_returns"])
+            aggregated_metrics["volatility"] = calculate_volatility_portfolio(
+                aggregated_metrics["portfolio_daily_returns"]
+            )
+            aggregated_metrics["weighted_average_correlation"] = weighted_average_correlation(
+                aggregated_metrics["ticker_investments"],
+                aggregated_metrics["ticker_prices"],
+                aggregated_metrics["ticker_shares"],
+            )
+            aggregated_metrics["correlation"] = calculate_stocks_correlation_matrix(
+                aggregated_metrics["ticker_investments"], aggregated_metrics["ticker_prices"]
+            )
+            aggregated_metrics["portfolio_deposit"] = compute_deposit_evolution(
+                aggregated_metrics["transactions"],
+                aggregated_metrics["transactions"].index[0],
+                aggregated_metrics["ticker_prices"].index[-1],
+            ).round(2)
+            aggregated_metrics["ticker_latent_gains_pct"] = (
+                (
+                    (
+                        aggregated_metrics["ticker_latent_gains"]
+                        / aggregated_metrics["ticker_investments"].replace(0, np.nan)
+                    )
+                    * 100
+                )
+                .fillna(0)
+                .round(2)
+            )
+            aggregated_metrics["volatility_portfolio"] = calculate_volatility_portfolio(
+                aggregated_metrics["portfolio_daily_returns"]
+            )
+            aggregated_metrics["portfolio_gross_value"] = aggregated_metrics["portfolio_gross_value"].round(2)
+            aggregated_metrics["portfolio_values"] = aggregated_metrics["portfolio_values"].round(2)
+            aggregated_metrics["portfolio_cash"] = aggregated_metrics["portfolio_cash"].round(2)
+            aggregated_metrics["portfolio_latent_gain"] = aggregated_metrics["portfolio_latent_gain"].round(2)
+            aggregated_metrics["portfolio_total_gains"] = aggregated_metrics["portfolio_total_gains"].round(2)
+            aggregated_metrics["portfolio_dividends"] = aggregated_metrics["portfolio_dividends"].round(2)
+            aggregated_metrics["benchmark_gains"] = aggregated_metrics["benchmark_gains"].round(2)
+            aggregated_metrics["ticker_investments"] = aggregated_metrics["ticker_investments"].round(2)
+            aggregated_metrics["ticker_values"] = aggregated_metrics["ticker_values"].round(2)
+            aggregated_metrics["ticker_dividends"] = aggregated_metrics["ticker_dividends"].round(2)
+            aggregated_metrics["ticker_latent_gains"] = aggregated_metrics["ticker_latent_gains"].round(2)
+            aggregated_metrics["initial_invested_amount"] = round(aggregated_metrics["initial_invested_amount"], 2)
+
+        chart_generate_rapport(self.__stock_db, "heritage_stock", heritage_path, aggregated_metrics)
+        excel_generator = StockExcelGenerator(aggregated_metrics, heritage_path, currency_symbol, "heritage_stock")
         excel_generator.generate_report()
 
     @staticmethod

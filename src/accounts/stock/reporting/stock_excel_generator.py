@@ -1,4 +1,4 @@
-from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
@@ -12,12 +12,20 @@ class StockExcelGenerator:
     """Générateur de tableaux de bord Excel pour portefeuille boursier."""
 
     def __init__(
-        self, portfolio_tracker: PortfolioTracker, portfolio_name: str, file_path: str, currency_symbol: str
+        self,
+        portfolio_tracker: PortfolioTracker | dict[str, Any],
+        output_path: str,
+        currency_symbol: str,
+        portfolio_name: str,
     ) -> None:
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(portfolio_tracker, dict):
+            portfolio_tracker = SimpleNamespace(**portfolio_tracker)
+
         self.__tracker = portfolio_tracker
         self.__portfolio_name = portfolio_name
-        self.__file_path = Path(file_path).resolve()
-        self.__file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.__file_path = output_path / f"{self.__portfolio_name}.xlsx"
         self.__currency_symbol = currency_symbol
 
     def generate_report(self) -> str:
@@ -219,11 +227,16 @@ class StockExcelGenerator:
         ws.write(row, 0, "TOTAL", fmt["total_label"])
         ws.write(row, 1, "", fmt["total_val"])
         ws.write(row, 2, "", fmt["total_val"])
-        ws.write_formula(row, 3, f"=SUBTOTAL(109, D5:D{end_row})", fmt["total_currency"])
-        ws.write_formula(row, 4, f"=SUBTOTAL(109, E5:E{end_row})", fmt["total_currency"])
-        ws.write_formula(row, 5, f"=SUBTOTAL(109, F5:F{end_row})", fmt["total_currency"])
-        ws.write_formula(row, 6, f"=IF(D{row + 1}>0, F{row + 1}/D{row + 1}, 0)", fmt["total_percent"])
-        ws.write_formula(row, 7, f"=SUBTOTAL(109, H5:H{end_row})", fmt["total_percent"])
+        ws.write_formula(row, 3, f"=SUBTOTAL(109, D5:D{row})", fmt["total_currency"])
+        ws.write_formula(row, 4, f"=SUBTOTAL(109, E5:E{row})", fmt["total_currency"])
+        ws.write_formula(row, 5, f"=SUBTOTAL(109, F5:F{row})", fmt["total_currency"])
+        ws.write_formula(
+            row,
+            6,
+            f"=IF(SUBTOTAL(109, D5:D{row})>0, SUBTOTAL(109, F5:F{row})/SUBTOTAL(109, D5:D{row}), 0)",
+            fmt["total_percent"],
+        )
+        ws.write_formula(row, 7, f"=SUBTOTAL(109, H5:H{end_row + 1})", fmt["total_percent"])
 
     def __build_transactions_sheet(self, wb: xlsxwriter.Workbook, fmt: dict[str, Any]) -> None:
         ws = wb.add_worksheet("Transactions")

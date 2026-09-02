@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | default('Bilan Financier') }}</title>
+
+    <style>
+      {{ bank_css | safe }}
+    </style>
+
+    <script>
+      {{ vendor_scripts | safe }}
+    </script>
+
+</head>
+<body>
+
+    <header>
+        <h1>Bilan Financier</h1>
+    </header>
+
+    {% if not has_only_incomes_or_expenses %}
+    <!-- 1. Analyse Financière Globale (Stacked Bar Chart) -->
+    <section class="chart-section">
+        <div class="controls" id="controls_bar">
+            <label><input type="radio" name="viewMode" value="years" checked /> Années</label>
+            <label><input type="radio" name="viewMode" value="months" /> Mois</label>
+            <select id="yearSelect" class="is-hidden" aria-label="Choisir l'année"></select>
+            
+            <span class="divider"></span>
+
+            <label><input type="radio" name="granularity" value="none" checked> Total</label>
+            <label><input type="radio" name="granularity" value="category"> Catégories</label>
+            <label><input type="radio" name="granularity" value="subcategory"> Sous-catégories</label>
+        </div>
+
+        <div id="container_bar" class="chart-container chart-height-bar"></div>
+    </section>
+    {% endif %}
+
+    <!-- 2. Évolution Revenus / Dépenses (Hybrid Chart) -->
+    <section class="chart-section">
+        <div class="controls" id="controls_evolution">
+            <div class="switch-container">
+                <span id="label_type" class="switch-label">Dépenses</span>
+                <label class="switch">
+                    <input type="checkbox" id="switch_type" aria-label="Basculer entre dépenses et revenus">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <span class="divider"></span>
+
+            <label><input type="radio" name="mode_evo" value="year" checked> Par année</label>
+            <label><input type="radio" name="mode_evo" value="month"> Par mois</label>
+
+            <select id="year_evo" class="is-hidden" aria-label="Choisir l'année"></select>
+
+            <span class="divider"></span>
+
+            <label><input type="radio" name="gran_evo" value="total" checked> Total</label>
+            <label><input type="radio" name="gran_evo" value="cat"> Catégories</label>
+            <label><input type="radio" name="gran_evo" value="sub"> Sous-catégories</label>
+        </div>
+
+        <div id="container_evolution" class="chart-container chart-height-evolution"></div>
+    </section>
+
+    <!-- 3. Répartition Hiérarchique (Sunburst Chart) -->
+    <div class="sunburst-wrapper">
+    
+        <!-- BARRE DE COMMANDE / SWITCH -->
+        <div class="sunburst-nav">
+            <div class="sunburst-pill">
+                <button id="btnShowExpenses" class="btn-toggle active">
+                    Dépenses
+                </button>
+                <button id="btnShowIncomes" class="btn-toggle">
+                    Revenus
+                </button>
+            </div>
+        </div>
+
+        <!-- SECTION DÉPENSES (AFFICHÉE PAR DÉFAUT) -->
+        <div id="sectionExpenses" class="sunburst-card">
+            <div class="sunburst-filters">
+                <strong>Exclure des Dépenses :</strong>
+                <div id="sunburstFilterExpenses" class="sunburst-filter-list"></div>
+            </div>
+            <div id="sunburstExpensesContainer" class="sunburst-chart-container"></div>
+        </div>
+
+        <!-- SECTION REVENUS (MASQUÉE PAR DÉFAUT) -->
+        <div id="sectionIncomes" class="sunburst-card is-hidden">
+            <div class="sunburst-filters">
+                <strong>Exclure des Revenus :</strong>
+                <div id="sunburstFilterIncomes" class="sunburst-filter-list"></div>
+            </div>
+            <div id="sunburstIncomesContainer" class="sunburst-chart-container"></div>
+        </div>
+
+    </div>
+
+    {% if not has_only_incomes_or_expenses %}
+    <!-- 4. Flux Financiers (Sankey Chart) -->
+    <section class="chart-section">
+        {% if data.multiple_years %}
+        <div class="controls">
+            <label for="sankeyYearSelect">Choisir l'année pour Sankey :</label>
+            <select id="sankeyYearSelect">
+                {% for y in data.sankey_years %}
+                <option value="{{ y }}" {% if loop.first %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div id="sankeyContainer" class="chart-container chart-height-sankey"></div>
+    </section>
+    {% endif %}
+
+    <script>
+        window.DATA_GLOBAL = {{ data.json_data_bar | safe | default('{}') }};
+        window.DATA_EVOLUTION = {{ data.json_data_evolution | safe | default('{}') }};
+        window.SANKEY_DATA = {{ data.json_data_sankey | safe | default('[]') }};
+        window.SUNBURST_DATA = {{ data.json_data_sunburst | safe | default('[]') }};
+        window.INCOMES_LIST = {{ data.incomes_list_json | safe | default('[]') }};
+        window.YEARS = {{ data.years_json | safe | default('[]') }};
+        window.CURRENCY_SYMBOL = {{ data.currency_symbol | tojson | safe }};
+        window.HAS_ONLY_INCOMES_OR_EXPENSES = {{ 'true' if has_only_incomes_or_expenses else 'false' }};
+        
+        {{ bank_js | safe }}
+    </script>
+
+</body>
+</html>

@@ -1,13 +1,11 @@
 import os
-import subprocess
-from tkinter import messagebox
 from typing import Literal
 
 import customtkinter as ctk
 import pandas as pd
 from PIL import Image
 
-from utils.data_utils import handle_download
+from utils.data_utils import handle_download, open_xlsx_window
 
 
 class ExcelReport:
@@ -55,14 +53,11 @@ class ExcelReport:
         title_label = ctk.CTkLabel(header_frame, text="Bilans Excel", font=("Arial", 60, "bold"))
         title_label.pack(expand=True)
 
-        # On cherche les fichiers qui finissent par .xlsx (ex: Bilan 2026.xlsx, Bilan 2020-2026.xlsx)
+        # On cherche les fichiers qui finissent par .xlsx
         available_years = []
         for file in os.listdir(bilan_dir):
             if file.endswith(".xlsx"):
-                # Extraction : "Bilan 2026.xlsx" -> "2026"
-                year_name = file.replace("Bilan ", "").replace(".xlsx", "")
-
-                # On construit le chemin relatif vers le fichier
+                year_name = file.replace(".xlsx", "")
                 file_path = os.path.join(bilan_dir, file)
                 available_years.append({"year": year_name, "path": file_path})
 
@@ -114,26 +109,8 @@ class ExcelReport:
                 text="Ouvrir dans Excel",
                 fg_color=self.__theme["magenta"]["fg_color"],
                 hover_color=self.__theme["magenta"]["hover_color"],
-                command=lambda p=data["path"]: self.__open_xlsx_window(p),
+                command=lambda p=data["path"]: open_xlsx_window(p),
                 corner_radius=8,
                 height=30,
                 font=("Arial", 12, "bold"),
             ).pack(side="bottom", pady=15, padx=15, fill="x")
-
-    def __open_xlsx_window(self, file_path: str) -> None:
-        """Ouvre le fichier Excel."""
-
-        if not os.path.exists(file_path):
-            messagebox.showerror("Erreur", "Le fichier Excel est introuvable.")
-            return
-
-        try:
-            subprocess.Popen(["start", "excel", "/r", os.path.abspath(file_path)], shell=True)
-
-        except (OSError, subprocess.SubprocessError):
-            try:
-                os.startfile(file_path)
-            except OSError:
-                messagebox.showerror(
-                    "Erreur critique", f"Aucun logiciel n'est associé aux fichiers {os.path.splitext(file_path)[1]}"
-                )

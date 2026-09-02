@@ -1,5 +1,4 @@
 import os
-import random
 import re
 import shutil
 from tkinter import messagebox
@@ -22,7 +21,7 @@ class Account:
         self.__theme = controller.get_theme()
         self.__config = controller.get_config()
         self.__mode = mode
-        self.__db = controller.get_db_banking() if mode == "banking" else controller.get_db_stock()
+        self.__db = controller.get_bank_db() if mode == "banking" else controller.get_stock_db()
 
     def display(self) -> None:
         """Affiche le tableau de bord avec les cartes de comptes ou de portefeuilles."""
@@ -33,7 +32,7 @@ class Account:
         title_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
         title_frame.pack(fill="x", padx=20, pady=10)
 
-        page_title = "Tableau de Bord - Comptes" if self.__mode == "banking" else "Portefeuilles Boursiers"
+        page_title = "Comptes Bancaires" if self.__mode == "banking" else "Portefeuilles Boursiers"
         btn_text = "+ Ajouter un compte" if self.__mode == "banking" else "+ Ajouter un portefeuille"
 
         ctk.CTkLabel(title_frame, text=page_title, font=("Arial", 32, "bold")).pack(side="left")
@@ -58,9 +57,9 @@ class Account:
                 self.__create_card(scroll_container, row, index)
         else:
             empty_msg = (
-                "Aucun compte bancaire enregistré."
+                "Aucun compte bancaire enregistré"
                 if self.__mode == "banking"
-                else "Aucun portefeuille boursier enregistré."
+                else "Aucun portefeuille boursier enregistré"
             )
             ctk.CTkLabel(scroll_container, text=empty_msg).grid(row=0, column=0, columnspan=3, pady=50)
 
@@ -99,7 +98,7 @@ class Account:
             actions = [
                 {
                     "name": "Données",
-                    "desc": "Importer ou modifier\nvos opérations.",
+                    "desc": "Importer ou modifier\nvos opérations",
                     "fg_color": self.__theme["blue_02"]["fg_color"],
                     "hover_color": self.__theme["blue_02"]["hover_color"],
                     "icon_path": "src/static/img/icons/directory.png",
@@ -107,7 +106,7 @@ class Account:
                 },
                 {
                     "name": "Analyses",
-                    "desc": "Visualiser la santé\nde vos finances.",
+                    "desc": "Visualiser la santé\nde vos finances",
                     "fg_color": self.__theme["blue_03"]["fg_color"],
                     "hover_color": self.__theme["blue_03"]["fg_color"],
                     "icon_path": "src/static/img/icons/chart.png",
@@ -115,7 +114,7 @@ class Account:
                 },
                 {
                     "name": "Rapports",
-                    "desc": "Générer un fichier\nExcel complet.",
+                    "desc": "Générer un fichier\nExcel complet",
                     "fg_color": self.__theme["magenta"]["fg_color"],
                     "hover_color": self.__theme["magenta"]["hover_color"],
                     "icon_path": "src/static/img/icons/file.png",
@@ -126,7 +125,7 @@ class Account:
             actions = [
                 {
                     "name": "Données",
-                    "desc": "Importer ou modifier\nvos transactions.",
+                    "desc": "Importer ou modifier\nvos transactions",
                     "fg_color": self.__theme["blue_02"]["fg_color"],
                     "hover_color": self.__theme["blue_02"]["hover_color"],
                     "icon_path": "src/static/img/icons/directory.png",
@@ -134,7 +133,7 @@ class Account:
                 },
                 {
                     "name": "Analyses",
-                    "desc": "Visualiser la progression\nde votre portefeuille.",
+                    "desc": "Visualiser la progression\nde votre portefeuille",
                     "fg_color": self.__theme["blue_03"]["fg_color"],
                     "hover_color": self.__theme["blue_03"]["fg_color"],
                     "icon_path": "src/static/img/icons/chart.png",
@@ -142,7 +141,7 @@ class Account:
                 },
                 {
                     "name": "Rapports",
-                    "desc": "Générer un fichier\nExcel complet.",
+                    "desc": "Générer un fichier\nExcel complet",
                     "fg_color": self.__theme["magenta"]["fg_color"],
                     "hover_color": self.__theme["magenta"]["hover_color"],
                     "icon_path": "src/static/img/icons/file.png",
@@ -165,9 +164,10 @@ class Account:
         lbl_name.pack(pady=(15, 2))
 
         if self.__mode == "banking":
+            currency = "€" if row["currency"] == "EUR" else "$"
             stats = self.__db.get_bank_account_statistics(row["id"])
             total_amount = stats.get("bank_account_amount", 0.0)
-            formatted_balance = f"{total_amount:,.2f}".replace(",", " ").replace(".", ",") + " €"
+            formatted_balance = f"{total_amount:,.2f}".replace(",", " ").replace(".", ",") + f" {currency}"
             balance_color = self.__theme["green"]["fg_color"] if total_amount >= 0 else self.__theme["red"]["fg_color"]
 
             ctk.CTkLabel(card, text=formatted_balance, font=("Arial", 24, "bold"), text_color=balance_color).pack(
@@ -246,48 +246,26 @@ class Account:
     def __handle_add_item(self) -> None:
         """Gère l'ajout d'un compte bancaire ou d'un portefeuille boursier."""
 
-        if self.__mode == "banking":
-            dialog = ctk.CTkInputDialog(text="Entrez le nom du compte :", title="Nouveau compte")
-            center_window_on_parent(dialog, self.__master, 300, 150)
-            dialog.transient(self.__master.winfo_toplevel())
+        is_banking = self.__mode == "banking"
+        entity_name = "compte" if is_banking else "portefeuille"
 
-            name = dialog.get_input()
-            if name:
-                if not re.match(self.PATTERN_VALIDE, name):
-                    messagebox.showwarning(
-                        "Nom invalide", "Le nom ne doit pas contenir de symboles ou de caractères spéciaux."
-                    )
-                    return
-
-                try:
-                    self.__db.add_bank_account(name)
-                    self.display()
-                except ValueError as e:
-                    messagebox.showwarning("Doublon", str(e))
-                except Exception as e:
-                    messagebox.showerror("Erreur", f"Impossible de créer la ressource : {e}")
-
-        else:
-            # Stockage local des données saisies
+        def _show_dialog() -> dict[str, str | None]:
             result = {"name": None, "currency": None}
 
-            # Fenêtre modale rattachée directement au toplevel parent
             root = self.__master.winfo_toplevel()
             dialog = ctk.CTkToplevel(root)
-            dialog.title("Nouveau portefeuille")
+            dialog.title(f"Nouveau {entity_name}")
             dialog.geometry("360x220")
             dialog.resizable(False, False)
 
             center_window_on_parent(dialog, self.__master, width=360, height=220)
             dialog.transient(root)
 
-            # Champ Nom
-            ctk.CTkLabel(dialog, text="Nom du portefeuille :").pack(pady=(15, 5))
+            ctk.CTkLabel(dialog, text=f"Nom du {entity_name} :").pack(pady=(15, 5))
             name_entry = ctk.CTkEntry(dialog, width=240)
             name_entry.pack(pady=5)
 
-            # Choix Devise (EUR / USD)
-            ctk.CTkLabel(dialog, text="Devise du portefeuille :").pack(pady=(10, 5))
+            ctk.CTkLabel(dialog, text=f"Devise du {entity_name} :").pack(pady=(10, 5))
             currency_menu = ctk.CTkOptionMenu(dialog, values=["EUR", "USD"], width=240)
             currency_menu.pack(pady=5)
             currency_menu.set("EUR")
@@ -307,15 +285,12 @@ class Account:
                     result["currency"] = currency_menu.get()
                     dialog.destroy()
 
-            # Validation à la touche Entrée
             name_entry.bind("<Return>", on_confirm)
-
             ctk.CTkButton(dialog, text="Créer", command=on_confirm, width=120).pack(pady=(15, 10))
 
             dialog.update_idletasks()
             dialog.grab_set()
 
-            # Forcer le focus en vérifiant que le widget existe toujours
             def apply_focus() -> None:
                 if name_entry.winfo_exists():
                     name_entry.focus_set()
@@ -324,23 +299,30 @@ class Account:
             dialog.after(50, apply_focus)
             dialog.wait_window()
 
-            # Traitement du résultat après fermeture
-            if result["name"] and result["currency"]:
-                try:
-                    self.__db.add_portfolio(result["name"], result["currency"])
-                    self.display()
-                except ValueError as e:
-                    messagebox.showwarning("Doublon", str(e))
-                except Exception as e:
-                    messagebox.showerror("Erreur", f"Impossible de créer le portefeuille : {e}")
+            return result
+
+        res = _show_dialog()
+        if res["name"] and res["currency"]:
+            try:
+                if is_banking:
+                    self.__db.add_bank_account(res["name"], res["currency"])
+                else:
+                    self.__db.add_portfolio(res["name"], res["currency"])
+                self.display()
+            except ValueError as e:
+                messagebox.showwarning("Doublon", str(e))
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Impossible de créer la ressource : {e}")
 
     def __handle_delete(self, item_id: int, item_name: str) -> None:
         if messagebox.askyesno("Confirmation", f"Supprimer '{item_name}' ?\nCette action est irréversible."):
             self.__delete_directory(item_name)
             if self.__mode == "banking":
                 self.__db.delete_bank_account(item_id)
+                self.__controller.update_bank_bilan(None, None, self.display)
             else:
                 self.__db.delete_portfolio(item_id)
+                self.__controller.update_stock_bilan(None, None, self.display)
             self.display()
 
     def __handle_edit(self, item_id: int, old_name: str) -> None:
