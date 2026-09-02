@@ -110,11 +110,6 @@ def update_config_benchmark(benchmark: str):
 
 
 def update_config_currency(currency: str):
-    if currency == "EUR":
-        currency = "€"
-    elif currency == "USD":
-        currency = "$"
-
     full_config = load_config()
     full_config["currency"] = currency
     save_config(full_config)
