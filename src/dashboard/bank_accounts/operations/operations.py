@@ -7,10 +7,10 @@ from tkinter import messagebox
 import customtkinter as ctk
 import pandas as pd
 
-from accounts.banking.importers.data_extractor import DataExtractor
-from accounts.banking.processing.categorizer import Categorizer
-from accounts.banking.reporting.excel_generator import excel_generate_all_reports
-from accounts.banking.visualization.financial_chart import chart_generate_all_reports
+from accounts.bank.importers.data_extractor import DataExtractor
+from accounts.bank.processing.categorizer import Categorizer
+from accounts.bank.reporting.excel_generator import excel_generate_all_reports
+from accounts.bank.visualization.financial_chart import chart_generate_all_reports
 from accounts.heritage.processing.processing import calculate_heritage
 from dashboard.bank_accounts.operations.components.operation_edit_window import OperationEditWindow
 from utils.data_utils import remove_accents
@@ -23,7 +23,7 @@ class Operations:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__banking_db = self.__controller.get_bank_db()
+        self.__bank_db = self.__controller.get_bank_db()
         self.__stock_db = self.__controller.get_stock_db()
         self.__sort_column = "operation_date"
         self.__sort_ascending = False
@@ -73,7 +73,7 @@ class Operations:
             command=lambda: self.__handle_add_operation(bank_account_row),
         ).pack(side="left", padx=5)
 
-        operations = self.__banking_db.get_unprocessed_raw_operations(bank_account_row["id"])
+        operations = self.__bank_db.get_unprocessed_raw_operations(bank_account_row["id"])
         ctk.CTkButton(
             account_actions_bar,
             text="Catégoriser les opérations",
@@ -99,10 +99,10 @@ class Operations:
 
         bank_account_id = bank_account_row["id"]
         items_per_page = 21
-        currency_symbol = self.__banking_db.get_bank_account_currency_symbol(bank_account_id)
+        currency_symbol = self.__bank_db.get_bank_account_currency_symbol(bank_account_id)
 
         try:
-            df = self.__banking_db.get_operations_by_bank_account(bank_account_id)
+            df = self.__bank_db.get_operations_by_bank_account(bank_account_id)
 
             if not df.empty:
                 # Logique de Tri et Pagination
@@ -329,7 +329,7 @@ class Operations:
 
         win = OperationEditWindow(
             parent=self.__master,
-            db=self.__banking_db,
+            db=self.__bank_db,
             bank_account_id=bank_account_row["id"],
             operation=default_op,
             on_save_callback=lambda data: self.__process_add(data, bank_account_row),
@@ -342,7 +342,7 @@ class Operations:
 
         def task():
             try:
-                self.__banking_db.delete_operation(bank_account_row["id"], operation_id)
+                self.__bank_db.delete_operation(bank_account_row["id"], operation_id)
                 self.update_bilan(bank_account_row["id"], bank_account_row["name"])
             except Exception:
                 self.__master.after(
@@ -358,7 +358,7 @@ class Operations:
 
         OperationEditWindow(
             self.__master,
-            self.__banking_db,
+            self.__bank_db,
             bank_account_row["id"],
             operation,
             lambda data: self.__process_update(data, bank_account_row),
@@ -374,7 +374,7 @@ class Operations:
             return
 
         df["bank_account_id"] = bank_account_row["id"]
-        existing_ops = self.__banking_db.get_operations_by_bank_account(bank_account_row["id"])
+        existing_ops = self.__bank_db.get_operations_by_bank_account(bank_account_row["id"])
 
         if not existing_ops.empty:
             # Création des clés uniques de comparaison
@@ -421,7 +421,7 @@ class Operations:
 
         def task():
             try:
-                self.__banking_db.add_operations(df)
+                self.__bank_db.add_operations(df)
                 self.__master.after(0, lambda: self.__process_categorization(bank_account_row, loading_win))
 
             except Exception as e:
@@ -435,7 +435,7 @@ class Operations:
             loading_win.close()
 
         try:
-            categorizer = Categorizer(self.__master, self.__banking_db, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__bank_db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
@@ -469,7 +469,7 @@ class Operations:
         """Lance le processus de catégorisation."""
 
         try:
-            categorizer = Categorizer(self.__master, self.__banking_db, bank_account_row["id"])
+            categorizer = Categorizer(self.__master, self.__bank_db, bank_account_row["id"])
             cat_window = categorizer.categorize()
 
             if cat_window and cat_window.winfo_exists():
@@ -489,7 +489,7 @@ class Operations:
         def task():
             try:
                 df = pd.DataFrame([new_operation])
-                self.__banking_db.add_operations(df)
+                self.__bank_db.add_operations(df)
                 self.update_bilan(bank_account_row["id"], bank_account_row["name"])
             except Exception:
                 self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de l'ajout"))
@@ -504,7 +504,7 @@ class Operations:
 
         def task():
             try:
-                self.__banking_db.update_operation(bank_account_row["id"], updated_data)
+                self.__bank_db.update_operation(bank_account_row["id"], updated_data)
                 self.update_bilan(bank_account_row["id"], bank_account_row["name"])
             except Exception:
                 self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de la mise à jour"))
@@ -540,9 +540,9 @@ class Operations:
 
         # Génération des graphiques et rapports Excel
         if bank_account_id is not None:
-            chart_generate_all_reports(self.__banking_db, self.__stock_db, bank_path, bank_account_id)
-            excel_generate_all_reports(self.__banking_db, self.__stock_db, bank_path, bank_account_id)
+            chart_generate_all_reports(self.__bank_db, self.__stock_db, bank_path, bank_account_id)
+            excel_generate_all_reports(self.__bank_db, self.__stock_db, bank_path, bank_account_id)
 
-        chart_generate_all_reports(self.__banking_db, self.__stock_db, heritage_path)
-        excel_generate_all_reports(self.__banking_db, self.__stock_db, heritage_path)
-        calculate_heritage(self.__banking_db, self.__stock_db)
+        chart_generate_all_reports(self.__bank_db, self.__stock_db, heritage_path)
+        excel_generate_all_reports(self.__bank_db, self.__stock_db, heritage_path)
+        calculate_heritage(self.__bank_db, self.__stock_db)

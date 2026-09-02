@@ -5,24 +5,24 @@ from pathlib import Path
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from accounts.stock.database.stock_db import StockDB
 from config import load_config
 
 
 def chart_generate_all_reports(
-    banking_db: BankingDB, stock_db: StockDB, root_path: str | Path, bank_account_id: int | None = None
+    bank_db: BankDB, stock_db: StockDB, root_path: str | Path, bank_account_id: int | None = None
 ) -> None:
     root_path.mkdir(parents=True, exist_ok=True)
     is_heritage = not bank_account_id is not None
 
     if not is_heritage:
-        currency_symbol = banking_db.get_bank_account_currency_symbol(bank_account_id)
-        years_data = banking_db.get_categorized_operations_by_year(bank_account_id, stock_db, is_heritage)
+        currency_symbol = bank_db.get_bank_account_currency_symbol(bank_account_id)
+        years_data = bank_db.get_categorized_operations_by_year(bank_account_id, stock_db, is_heritage)
     else:
         currency_symbol = "€" if load_config()["currency"] == "EUR" else "$"
-        bank_accounts = banking_db.get_all_bank_account_currencies()
-        years_data = banking_db.get_categorized_operations_by_year(bank_accounts, stock_db, is_heritage)
+        bank_accounts = bank_db.get_all_bank_account_currencies()
+        years_data = bank_db.get_categorized_operations_by_year(bank_accounts, stock_db, is_heritage)
 
     all_years_incomes = []
     all_years_expenses = []
@@ -31,7 +31,7 @@ def chart_generate_all_reports(
     for year, data in years_data.items():
         output_file = root_path / f"{year}.html"
         generate_bank_report(
-            banking_db=banking_db,
+            bank_db=bank_db,
             incomes_df=data["incomes"],
             expenses_df=data["expenses"],
             incomes_expenses_df=data["all"],
@@ -51,7 +51,7 @@ def chart_generate_all_reports(
         else:
             output_file = root_path / "heritage_bank.html"
         generate_bank_report(
-            banking_db=banking_db,
+            bank_db=bank_db,
             incomes_df=pd.concat(all_years_incomes),
             expenses_df=pd.concat(all_years_expenses),
             incomes_expenses_df=pd.concat(all_years_combined),
@@ -61,7 +61,7 @@ def chart_generate_all_reports(
 
 
 def generate_bank_report(
-    banking_db: BankingDB,
+    bank_db: BankDB,
     incomes_df: pd.DataFrame,
     expenses_df: pd.DataFrame,
     incomes_expenses_df: pd.DataFrame,
@@ -75,7 +75,7 @@ def generate_bank_report(
     incomes_or_expenses_empty = incomes_df.empty or expenses_df.empty
 
     # Traitement des données JS / Highcharts
-    incomes_categories, expenses_categories = banking_db.get_category_lists()
+    incomes_categories, expenses_categories = bank_db.get_category_lists()
     years = sorted(incomes_expenses_df["year"].unique().tolist(), reverse=True) if not incomes_expenses_df.empty else []
 
     data = {

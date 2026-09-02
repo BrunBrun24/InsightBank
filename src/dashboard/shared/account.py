@@ -15,13 +15,13 @@ class Account:
 
     PATTERN_VALIDE = r"^[a-zA-Z0-9 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ_\-]+$"
 
-    def __init__(self, master: ctk.CTkFrame, controller, mode: Literal["banking", "stock"] = "banking") -> None:
+    def __init__(self, master: ctk.CTkFrame, controller, mode: Literal["bank", "stock"] = "bank") -> None:
         self.__master = master
         self.__controller = controller
         self.__theme = controller.get_theme()
         self.__config = controller.get_config()
         self.__mode = mode
-        self.__db = controller.get_bank_db() if mode == "banking" else controller.get_stock_db()
+        self.__db = controller.get_bank_db() if mode == "bank" else controller.get_stock_db()
 
     def display(self) -> None:
         """Affiche le tableau de bord avec les cartes de comptes ou de portefeuilles."""
@@ -32,8 +32,8 @@ class Account:
         title_frame = ctk.CTkFrame(self.__master, fg_color="transparent")
         title_frame.pack(fill="x", padx=20, pady=10)
 
-        page_title = "Comptes Bancaires" if self.__mode == "banking" else "Portefeuilles Boursiers"
-        btn_text = "+ Ajouter un compte" if self.__mode == "banking" else "+ Ajouter un portefeuille"
+        page_title = "Comptes Bancaires" if self.__mode == "bank" else "Portefeuilles Boursiers"
+        btn_text = "+ Ajouter un compte" if self.__mode == "bank" else "+ Ajouter un portefeuille"
 
         ctk.CTkLabel(title_frame, text=page_title, font=("Arial", 32, "bold")).pack(side="left")
 
@@ -50,7 +50,7 @@ class Account:
         scroll_container.pack(fill="both", expand=True, padx=20, pady=10)
         scroll_container.grid_columnconfigure((0, 1, 2), weight=1, pad=20)
 
-        items_df = self.__db.get_all_bank_accounts() if self.__mode == "banking" else self.__db.get_all_portfolios()
+        items_df = self.__db.get_all_bank_accounts() if self.__mode == "bank" else self.__db.get_all_portfolios()
 
         if not items_df.empty:
             for index, row in items_df.iterrows():
@@ -58,7 +58,7 @@ class Account:
         else:
             empty_msg = (
                 "Aucun compte bancaire enregistré"
-                if self.__mode == "banking"
+                if self.__mode == "bank"
                 else "Aucun portefeuille boursier enregistré"
             )
             ctk.CTkLabel(scroll_container, text=empty_msg).grid(row=0, column=0, columnspan=3, pady=50)
@@ -80,7 +80,7 @@ class Account:
             hover_color=self.__theme["blue_01"]["hover_color"],
             width=40,
             command=self.__controller.show_bank_accounts
-            if self.__mode == "banking"
+            if self.__mode == "bank"
             else self.__controller.show_stock_portfolios,
         )
         back_btn.place(x=0, y=15)
@@ -94,7 +94,7 @@ class Account:
         container.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Configuration des actions
-        if self.__mode == "banking":
+        if self.__mode == "bank":
             actions = [
                 {
                     "name": "Données",
@@ -163,7 +163,7 @@ class Account:
         lbl_name = ctk.CTkLabel(card, text=row["name"], font=("Arial", 20, "bold"))
         lbl_name.pack(pady=(15, 2))
 
-        if self.__mode == "banking":
+        if self.__mode == "bank":
             currency = "€" if row["currency"] == "EUR" else "$"
             stats = self.__db.get_bank_account_statistics(row["id"])
             total_amount = stats.get("bank_account_amount", 0.0)
@@ -238,7 +238,7 @@ class Account:
             ).grid(row=0, column=i, padx=5)
 
     def __handle_open(self, row: pd.Series) -> None:
-        if self.__mode == "banking":
+        if self.__mode == "bank":
             self.__controller.show_bank_account_menu(row)
         else:
             self.__controller.show_stock_account_menu(row)
@@ -246,8 +246,8 @@ class Account:
     def __handle_add_item(self) -> None:
         """Gère l'ajout d'un compte bancaire ou d'un portefeuille boursier."""
 
-        is_banking = self.__mode == "banking"
-        entity_name = "compte" if is_banking else "portefeuille"
+        is_bank = self.__mode == "bank"
+        entity_name = "compte" if is_bank else "portefeuille"
 
         def _show_dialog() -> dict[str, str | None]:
             result = {"name": None, "currency": None}
@@ -304,7 +304,7 @@ class Account:
         res = _show_dialog()
         if res["name"] and res["currency"]:
             try:
-                if is_banking:
+                if is_bank:
                     self.__db.add_bank_account(res["name"], res["currency"])
                 else:
                     self.__db.add_portfolio(res["name"], res["currency"])
@@ -317,7 +317,7 @@ class Account:
     def __handle_delete(self, item_id: int, item_name: str) -> None:
         if messagebox.askyesno("Confirmation", f"Supprimer '{item_name}' ?\nCette action est irréversible."):
             self.__delete_directory(item_name)
-            if self.__mode == "banking":
+            if self.__mode == "bank":
                 self.__db.delete_bank_account(item_id)
                 self.__controller.update_bank_bilan(None, None, self.display)
             else:
@@ -340,7 +340,7 @@ class Account:
                 return
 
             try:
-                if self.__mode == "banking":
+                if self.__mode == "bank":
                     self.__db.update_bank_account_name(item_id, new_name)
                     self.__controller.update_bank_bilan(item_id, new_name, self.display)
                 else:
@@ -353,7 +353,7 @@ class Account:
 
     def __delete_directory(self, item_name: str):
         try:
-            if self.__mode == "banking":
+            if self.__mode == "bank":
                 path = os.path.join(self.__config["destination_path"], "bank_account", item_name)
                 if os.path.exists(path):
                     shutil.rmtree(path)

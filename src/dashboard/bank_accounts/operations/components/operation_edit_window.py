@@ -2,7 +2,7 @@ from datetime import datetime
 
 import customtkinter as ctk
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from config import load_config
 from utils.ctk_date_entry import CtkDateEntry
 from utils.window_utils import center_window_on_parent
@@ -14,7 +14,7 @@ class OperationEditWindow(ctk.CTkToplevel):
     def __init__(
         self,
         parent,
-        db: BankingDB,
+        db: BankDB,
         bank_account_id: int,
         operation: dict,
         on_save_callback: callable,

@@ -9,7 +9,7 @@ from utils.data_utils import handle_download, open_in_browser
 
 
 class Chart:
-    def __init__(self, master: ctk.CTkFrame, controller, mode: Literal["banking", "stock"] = "banking") -> None:
+    def __init__(self, master: ctk.CTkFrame, controller, mode: Literal["bank", "stock"] = "bank") -> None:
         self.__master = master
         self.__controller = controller
         self.__config = controller.get_config()
@@ -22,7 +22,7 @@ class Chart:
         self.__controller.destroy_widgets()
 
         # Configuration du chemin selon le mode
-        subfolder = "bank_account" if self.__mode == "banking" else "stock"
+        subfolder = "bank_account" if self.__mode == "bank" else "stock"
         bilan_dir = os.path.join(self.__config["destination_path"], subfolder, account_row["name"])
 
         # Créer le dossier s'il n'existe pas
@@ -32,7 +32,7 @@ class Chart:
         # Action du bouton retour adaptée au mode
         back_command = (
             (lambda: self.__controller.show_bank_account_menu(account_row))
-            if self.__mode == "banking"
+            if self.__mode == "bank"
             else (lambda: self.__controller.show_stock_account_menu(account_row))
         )
 
@@ -108,4 +108,3 @@ class Chart:
                 height=30,
                 font=("Arial", 12, "bold"),
             ).pack(side="bottom", pady=15, padx=15, fill="x")
-

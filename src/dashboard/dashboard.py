@@ -4,7 +4,7 @@ import customtkinter as ctk
 import pandas as pd
 from PIL import Image
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from accounts.stock.database.stock_db import StockDB
 from config import load_config
 from dashboard.bank_accounts.operations.operations import Operations
@@ -55,9 +55,9 @@ class Dashboard(ctk.CTk):
         try:
             self.__config = load_config()
             self.__theme = self.__config["theme"]
-            self.__banking_db_path = self.__config["database"]["db_banking_path"]
+            self.__bank_db_path = self.__config["database"]["db_bank_path"]
             self.__stock_db_path = self.__config["database"]["db_stock_path"]
-            self.__banking_db = BankingDB(self.__banking_db_path)
+            self.__bank_db = BankDB(self.__bank_db_path)
             self.__stock_db = StockDB(self.__stock_db_path)
 
             # Demande au thread principal de construire la suite des modules
@@ -67,15 +67,15 @@ class Dashboard(ctk.CTk):
 
     def __finish_init(self) -> None:
         """Construit le reste des modules une fois les bases de données chargées."""
-        self.__bank_account_module = Account(self.__main_view, self, mode="banking")
+        self.__bank_account_module = Account(self.__main_view, self, mode="bank")
         self.__stock_account_module = Account(self.__main_view, self, mode="stock")
         self.__home_module = Home(self.__main_view, self)
         self.__configuration_module = Configuration(self.__main_view, self)
-        self.__banking_operations_module = Operations(self.__main_view, self)
+        self.__bank_operations_module = Operations(self.__main_view, self)
         self.__stock_operations_module = Transactions(self.__main_view, self)
-        self.__bank_chart = Chart(self.__main_view, self, mode="banking")
+        self.__bank_chart = Chart(self.__main_view, self, mode="bank")
         self.__stock_chart = Chart(self.__main_view, self, mode="stock")
-        self.__bank_excel_report = ExcelReport(self.__main_view, self, "banking")
+        self.__bank_excel_report = ExcelReport(self.__main_view, self, "bank")
         self.__stock_excel_report = ExcelReport(self.__main_view, self, "stock")
         self.__information = Information(self.__main_view, self)
         self.__categories_sub_categories = CategoriesSubCategories(self.__main_view, self)
@@ -95,11 +95,11 @@ class Dashboard(ctk.CTk):
             self.__loading_win.close()
         raise error
 
-    def get_bank_db(self) -> BankingDB:
-        return self.__banking_db
+    def get_bank_db(self) -> BankDB:
+        return self.__bank_db
 
-    def set_db_banking(self, db: BankingDB) -> None:
-        self.__banking_db = db
+    def set_db_bank(self, db: BankDB) -> None:
+        self.__bank_db = db
 
     def get_stock_db(self) -> StockDB:
         return self.__stock_db
@@ -132,7 +132,7 @@ class Dashboard(ctk.CTk):
         self.__stock_account_module.show_account_menu(portfolio_row)
 
     def show_bank_operations(self, bank_account_row: pd.Series) -> None:
-        self.__banking_operations_module.display(bank_account_row)
+        self.__bank_operations_module.display(bank_account_row)
 
     def show_stock_transactions(self, portfolio_row: pd.Series) -> None:
         self.__stock_operations_module.display(portfolio_row)
@@ -169,7 +169,7 @@ class Dashboard(ctk.CTk):
 
         def task():
             try:
-                self.__banking_operations_module.update_bilan(bank_account_id, bank_account_name)
+                self.__bank_operations_module.update_bilan(bank_account_id, bank_account_name)
             finally:
                 self.after(0, lambda: self.__on_update_bilan_complete(loading_win, callback))
 

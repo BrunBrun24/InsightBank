@@ -2,7 +2,7 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from config import load_config, save_config
 
 
@@ -12,7 +12,7 @@ class CategoriesSubCategories:
         self.__controller = controller
         self.__config = controller.get_config()
         self.__theme = controller.get_theme()
-        self.__banking_db_path = self.__config["database"]["db_banking_path"]
+        self.__bank_db_path = self.__config["database"]["db_bank_path"]
 
     def display(self) -> None:
         """Affiche la page de gestion des catégories et sous-catégories."""
@@ -351,7 +351,7 @@ class CategoriesSubCategories:
 
             save_config(full_config)
             self.__config = load_config()
-            self.__controller.set_db_banking(BankingDB(self.__banking_db_path))
+            self.__controller.set_db_bank(BankDB(self.__bank_db_path))
 
             messagebox.showinfo("Succès", "Toutes les catégories ont été mises à jour avec succès !")
             self.__controller.show_home()

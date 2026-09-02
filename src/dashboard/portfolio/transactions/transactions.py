@@ -37,7 +37,7 @@ class Transactions:
         self.__master = master
         self.__controller = controller
         self.__theme = controller.get_theme()
-        self.__banking_db = controller.get_bank_db()
+        self.__bank_db = controller.get_bank_db()
         self.__stock_db = controller.get_stock_db()
         self.__config = controller.get_config()
         self.__sort_column = "date"
@@ -974,7 +974,7 @@ class Transactions:
 
             self.__update_bilan_all_portfolios(heritage_path)
 
-        calculate_heritage(self.__banking_db, self.__stock_db)
+        calculate_heritage(self.__bank_db, self.__stock_db)
 
     def __update_bilan_all_portfolios(self, heritage_path: str) -> None:
         # Regroupement par devises et consolidation dans la devise cible

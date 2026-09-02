@@ -2,7 +2,7 @@ import unicodedata
 
 import customtkinter as ctk
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from config import load_config
 from utils.window_utils import center_window_on_parent
 
@@ -19,20 +19,20 @@ class Categorizer:
     - Enregistrer les opérations catégorisées dans la base et les marquer comme traitées.
     """
 
-    def __init__(self, parent: ctk.CTk, db_banking: BankingDB, bank_account_id: int, buttons_per_row=5) -> None:
+    def __init__(self, parent: ctk.CTk, db_bank: BankDB, bank_account_id: int, buttons_per_row=5) -> None:
         config = load_config()
 
         # Permet de savoir s'il y a eu de nouvelles opérations qui ont été catégorisées
         self.has_changed = False
 
         self.__parent = parent
-        self.__banking_db = db_banking
+        self.__bank_db = db_bank
         self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
         self.__smart_categorization_enabled = config["smart_categorization_enabled"]
         self.__theme = config["theme"]
         self.__custom_rules = config["custom_rules"]
-        self.__operations = self.__banking_db.get_unprocessed_raw_operations(self.__bank_account_id)
+        self.__operations = self.__bank_db.get_unprocessed_raw_operations(self.__bank_account_id)
         self.__incomes_categories_and_sub_categories = config["database"]["incomes"]["categories_subcategories"]
         self.__expenses_categories_and_sub_categories = config["database"]["expenses"]["categories_subcategories"]
         self.__history = []  # Pile pour stocker les opérations précédemment traitées
@@ -273,9 +273,7 @@ class Categorizer:
         last_operation = self.__history.pop()
 
         # Réinitialise la catégorisation en base de données avec l'ID correct
-        self.__banking_db.update_operation_according_classification(
-            last_operation["id"], "", ""
-        )
+        self.__bank_db.update_operation_according_classification(last_operation["id"], "", "")
 
         # Réinsertion en première position de la liste de travail
         self.__operations.insert(0, last_operation)
@@ -296,7 +294,7 @@ class Categorizer:
         self.__history.append(self.current_row)
 
         # Conversion des noms des boutons en IDs techniques
-        self.__banking_db.update_operation_according_classification(
+        self.__bank_db.update_operation_according_classification(
             self.__operations[0]["id"],
             main_categorie,
             sub_categorie,
@@ -324,11 +322,11 @@ class Categorizer:
 
         # Recherche dans l'historique des opérations
         if self.__smart_categorization_enabled:
-            target_cat, target_subcat = self.__banking_db.get_category_by_exact_label(
+            target_cat, target_subcat = self.__bank_db.get_category_by_exact_label(
                 self.__bank_account_id, label, short_label, operation_type
             )
             if target_cat is not None:
-                self.__banking_db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__bank_db.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         # Regarde si une règle existe
@@ -397,7 +395,7 @@ class Categorizer:
             if rule_matched and conditions:
                 target_cat = custom_rule.get("target_category", "")
                 target_subcat = custom_rule.get("target_subcategory", "")
-                self.__banking_db.update_operation_according_classification(id_op, target_cat, target_subcat)
+                self.__bank_db.update_operation_according_classification(id_op, target_cat, target_subcat)
                 return False
 
         return True

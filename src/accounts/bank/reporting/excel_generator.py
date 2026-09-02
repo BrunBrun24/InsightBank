@@ -4,31 +4,31 @@ from pathlib import Path
 import pandas as pd
 import xlsxwriter
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from accounts.stock.database.stock_db import StockDB
 from config import load_config
 
 
 def excel_generate_all_reports(
-    banking_db: BankingDB, stock_db: StockDB, root_path: str | Path, bank_account_id: int | None = None
+    bank_db: BankDB, stock_db: StockDB, root_path: str | Path, bank_account_id: int | None = None
 ) -> None:
     is_heritage = not bank_account_id is not None
 
     if not is_heritage:
-        currency_symbol = banking_db.get_bank_account_currency_symbol(bank_account_id)
-        df = banking_db.get_categorized_operations_df(bank_account_id)
+        currency_symbol = bank_db.get_bank_account_currency_symbol(bank_account_id)
+        df = bank_db.get_categorized_operations_df(bank_account_id)
         if df.empty:
             return
     else:
         target_currency = "€" if load_config()["currency"] == "EUR" else "$"
-        bank_accounts = banking_db.get_all_bank_account_currencies()
+        bank_accounts = bank_db.get_all_bank_account_currencies()
         all_operations_dfs = []
 
         for account in bank_accounts:
             acc_id = account["id"]
             acc_currency = account["currency"]
 
-            df = banking_db.get_categorized_operations_df(acc_id)
+            df = bank_db.get_categorized_operations_df(acc_id)
 
             if acc_currency != target_currency:
                 rates = stock_db.get_currency_conversion_rates(acc_currency, target_currency)
@@ -60,13 +60,13 @@ def excel_generate_all_reports(
 
     if not is_heritage:
         for year in years:
-            generate_annual_report(banking_db, df, root_path, [year], currency_symbol, is_heritage, year)
+            generate_annual_report(bank_db, df, root_path, [year], currency_symbol, is_heritage, year)
 
-    generate_annual_report(banking_db, df, root_path, years, currency_symbol, is_heritage, None)
+    generate_annual_report(bank_db, df, root_path, years, currency_symbol, is_heritage, None)
 
 
 def generate_annual_report(
-    banking_db: BankingDB,
+    bank_db: BankDB,
     df: pd.DataFrame,
     root_path: str | Path,
     years_list: list[int],
@@ -75,7 +75,7 @@ def generate_annual_report(
     year: int | None = None,
 ) -> None:
     data_summary = get_monthly_amounts(df, year)
-    structure = get_filtered_structure(banking_db, data_summary)
+    structure = get_filtered_structure(bank_db, data_summary)
 
     if not structure:
         return
@@ -345,14 +345,14 @@ def get_monthly_amounts(df: pd.DataFrame, year: int | None = None) -> pd.DataFra
     return summary
 
 
-def get_filtered_structure(banking_db: BankingDB, data_summary: pd.DataFrame) -> list[dict]:
+def get_filtered_structure(bank_db: BankDB, data_summary: pd.DataFrame) -> list[dict]:
     """Filtre et trie la structure des catégories par montant total décroissant."""
-    df_sub = banking_db.get_categories_structure()
+    df_sub = bank_db.get_categories_structure()
     annual_totals = data_summary.groupby("sub_category")["amount"].sum().to_dict()
 
     full_structure = []
     categories = df_sub["main_category"].unique() if not df_sub.empty else []
-    recettes_names = list(banking_db.get_categories_hierarchy()[0].keys())
+    recettes_names = list(bank_db.get_categories_hierarchy()[0].keys())
 
     for main_group_name, target_cats in [("REVENUS", recettes_names), ("DÉPENSES", None)]:
         group_content = []

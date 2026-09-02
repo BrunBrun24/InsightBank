@@ -13,7 +13,7 @@ def load_config() -> dict:
             "benchmark": "^GSPC",
             "currency": "EUR",
             "database": {
-                "db_banking_path": "data/bank_accounts.db",
+                "db_bank_path": "data/bank_accounts.db",
                 "db_stock_path": "data/stock.db",
                 "incomes": {
                     "short_label_and_operation_type": {

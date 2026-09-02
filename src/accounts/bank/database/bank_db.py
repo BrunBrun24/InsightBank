@@ -9,7 +9,7 @@ from config import load_config
 from ...shared.database_base import DatabaseBase
 
 
-class BankingDB(DatabaseBase):
+class BankDB(DatabaseBase):
     """Gère l'accès et la manipulation des données financières d'un compte bancaire."""
 
     def __init__(self, db_path: str) -> None:

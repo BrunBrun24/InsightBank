@@ -3,7 +3,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from accounts.banking.database.banking_db import BankingDB
+from accounts.bank.database.bank_db import BankDB
 from accounts.heritage.reporting.reporting import export_heritage_to_excel
 from accounts.heritage.visualization.visualization import generate_standalone_heritage_report
 from accounts.stock.database.stock_db import StockDB
@@ -11,10 +11,10 @@ from accounts.stock.processing.portfolio_tracker import PortfolioTracker
 from config import load_config
 
 
-def calculate_heritage(banking_db: BankingDB, stock_db: StockDB) -> None:
+def calculate_heritage(bank_db: BankDB, stock_db: StockDB) -> None:
     target_currency = load_config()["currency"]
 
-    account_df = bank_account(banking_db, stock_db, target_currency)
+    account_df = bank_account(bank_db, stock_db, target_currency)
     portfolios_df = stock_account(stock_db, target_currency)
     if account_df.empty and portfolios_df.empty:
         return
@@ -41,12 +41,12 @@ def calculate_heritage(banking_db: BankingDB, stock_db: StockDB) -> None:
     export_heritage_to_excel(data, currency_symbol)
 
 
-def bank_account(banking_db: BankingDB, stock_db: StockDB, target_currency: str) -> pd.DataFrame:
-    bank_accounts = banking_db.get_all_bank_account_currencies()
+def bank_account(bank_db: BankDB, stock_db: StockDB, target_currency: str) -> pd.DataFrame:
+    bank_accounts = bank_db.get_all_bank_account_currencies()
     account_dfs = []
 
     for account in bank_accounts:
-        operations_df = banking_db.get_account_operations(account["id"])
+        operations_df = bank_db.get_account_operations(account["id"])
         if not operations_df.empty:
             operations_df["operation_date"] = pd.to_datetime(operations_df["operation_date"])
             operations_df["account_name"] = account["name"]
