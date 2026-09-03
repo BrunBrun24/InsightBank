@@ -21,7 +21,7 @@ Le module Banque permet de centraliser vos comptes courants, de catégoriser vos
 * **Bilans Excel complets** : Exportation d'un rapport complet récapitulant l'ensemble de vos revenus et dépenses par catégories et sous-catégories.
 
 ### Rendu interactif HTML
-<video src="https://github.com/user-attachments/assets/09bcacb2-5be0-459e-bc18-83e85b449333" width="100%" controls></video>
+<video src="https://github.com/user-attachments/assets/70e50e79-b0e9-49a9-9c76-91c67dc167f8" width="100%" controls></video>
 
 ### Rapport Excel
 ![Rapport Excel Banque](https://github.com/user-attachments/assets/98bee0d9-e78a-4e7b-9c6f-59d5931f1ddf)
