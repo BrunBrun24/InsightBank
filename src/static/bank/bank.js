@@ -335,21 +335,21 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
   let mode = 'year';
   let gran = 'total';
 
+  const sortedYears = [...YEARS].sort((a, b) => a - b);
+
   const yearSelectEvo = document.getElementById('year_evo');
   if (yearSelectEvo) {
     yearSelectEvo.innerHTML = '';
-    YEARS.forEach((y, i) => {
+    sortedYears.forEach((y, i) => {
       const opt = document.createElement('option');
       opt.value = y;
       opt.text = y;
       if (i === 0) opt.selected = true;
       yearSelectEvo.appendChild(opt);
     });
-    // Attachement de l'événement onchange
     yearSelectEvo.onchange = () => {
       renderEvoChart();
     };
-    // Toggle de la classe CSS is-hidden selon mode
     yearSelectEvo.classList.toggle('is-hidden', mode !== 'month');
   }
 
@@ -376,7 +376,7 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
     let result;
     const currentData = getCurrentData();
     if (mode === 'year') {
-      result = YEARS.map((y) =>
+      result = sortedYears.map((y) =>
         Object.values(currentData).reduce(
           (s, c) =>
             s +
@@ -441,8 +441,8 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
 
   function buildEvoSeries() {
     const selectedYear = yearSelectEvo
-      ? parseInt(yearSelectEvo.value) || YEARS[0]
-      : YEARS[0];
+      ? parseInt(yearSelectEvo.value) || sortedYears[0]
+      : sortedYears[0];
     let series = [];
     const legendEvents = {
       legendItemClick: function (e) {
@@ -471,7 +471,7 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
       Object.entries(currentData).forEach(([cat, subs]) => {
         let data =
           mode === 'year'
-            ? YEARS.map((y) =>
+            ? sortedYears.map((y) =>
                 Object.values(subs || {}).reduce(
                   (s, sub) => s + (sub[y]?.reduce((a, b) => a + b, 0) || 0),
                   0
@@ -498,7 +498,7 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
         Object.entries(subs || {}).forEach(([sub, dataObj]) => {
           let data =
             mode === 'year'
-              ? YEARS.map((y) => dataObj[y]?.reduce((a, b) => a + b, 0) || 0)
+              ? sortedYears.map((y) => dataObj[y]?.reduce((a, b) => a + b, 0) || 0)
               : dataObj[selectedYear] || Array(12).fill(0);
 
           series.push({
@@ -549,7 +549,7 @@ if (!HAS_ONLY_INCOMES_OR_EXPENSES) {
 
     mode = modeEl.value;
     gran = granEl.value;
-    const categories = mode === 'year' ? YEARS : MONTHS;
+    const categories = mode === 'year' ? sortedYears : MONTHS;
     const displayTypeName = type === 'Revenus' ? 'Revenus' : 'Dépenses';
 
     evoChart = Highcharts.chart('container_evolution', {
