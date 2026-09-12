@@ -595,7 +595,6 @@ class StockDB(DatabaseBase):
         if "comment" not in df.columns:
             df["comment"] = None
 
-        df = transactions.copy()
         records = df.to_dict(orient="records")
         query = """
             INSERT INTO portfolio_transaction (

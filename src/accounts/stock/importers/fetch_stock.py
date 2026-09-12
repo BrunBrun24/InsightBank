@@ -45,7 +45,7 @@ def fetch_stock_data(db_stock, data: pd.DataFrame | list[str]) -> tuple[dict[str
         try:
             info = ticker_obj.info or {}
         except Exception as e:
-            messagebox.showinfo(f"Avertissement : Impossible de récupérer les informations pour {symbol} : {e}")
+            messagebox.showinfo("Avertissement", f"Impossible de récupérer les informations pour {symbol} : {e}")
             continue
 
         company_name = (info.get("longName") or info.get("shortName") or "Unknown Company")[:100]

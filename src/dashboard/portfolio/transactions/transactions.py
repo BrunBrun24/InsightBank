@@ -1314,10 +1314,25 @@ class Transactions:
         )
         self.__controller.show_stock_transactions(stock_portfolio_row)
 
-    def __on_import_error(self, error: Exception, loading_win: LoadingPopup) -> None:
+    def __on_import_error(self, error: Exception, loading_win: LoadingPopup | None) -> None:
         """Rappel exécuté sur le thread principal en cas d'erreur."""
-        loading_win.close()
-        messagebox.showerror("Erreur", f"Erreur lors de l'insertion : {error}")
+        if loading_win is not None and loading_win.winfo_exists():
+            loading_win.close()
+
+        # Détection des erreurs de connexion Internet (ConnectionError ou mots-clés DNS / HTTPS)
+        error_str = str(error)
+        if (
+            isinstance(error, ConnectionError)
+            or "NameResolutionError" in error_str
+            or "HTTPSConnectionPool" in error_str
+        ):
+            messagebox.showerror(
+                "Connexion Internet requise",
+                "Impossible de contacter le serveur : pas de connexion à Internet.\n"
+                "Veuillez vérifier votre connexion Internet et refaire la manipulation.",
+            )
+        else:
+            messagebox.showerror("Erreur", f"Erreur lors de l'insertion : {error}")
 
     def __validate_opearations(self, df: pd.DataFrame) -> bool:
         """Vérifie que les types d'opérations sont valides."""
