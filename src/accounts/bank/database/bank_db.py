@@ -644,7 +644,7 @@ class BankDB(DatabaseBase):
                 CREATE TRIGGER IF NOT EXISTS force_category_null_on_sub_null
                 AFTER UPDATE OF sub_category_id ON raw_data
                 FOR EACH ROW
-                WHEN NEW.sub_category_id IS NULL
+                WHEN NEW.sub_category_id IS NULL AND OLD.sub_category_id IS NOT NULL
                 BEGIN
                     UPDATE raw_data
                     SET category_id = NULL
@@ -653,9 +653,9 @@ class BankDB(DatabaseBase):
             """)
 
     def __verify_category_consistency(self) -> None:
-        """Vérifie la conformité des catégories en BDD de manière atomique."""
+        """Vérifie la conformité des catégories en BDD avec le fichier JSON"""
 
-        # On charge la structure cible depuis le JSON
+        # Charge la structure cible depuis le JSON
         full_config = load_config()["database"]
         target_structure = {
             "income": full_config["incomes"]["categories_subcategories"],
@@ -666,31 +666,33 @@ class BankDB(DatabaseBase):
             cursor = conn.cursor()
 
             for flow_type, categories_map in target_structure.items():
-                # 1. Nettoyage
                 allowed_cats = categories_map.keys()
 
-                # Supprimer catégories obsolètes
-                cursor.execute("SELECT id, name FROM categories WHERE type = ?", (flow_type,))
-                for cat_id, cat_name in cursor.fetchall():
-                    if cat_name not in allowed_cats:
-                        cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
-
-                # Supprimer sous-catégories obsolètes
+                # 1. Nettoyage des sous-catégories obsolètes (absentes du JSON)
                 cursor.execute(
                     """
                     SELECT sc.id, sc.name, c.name 
                     FROM sub_categories sc
                     JOIN categories c ON sc.category_id = c.id
                     WHERE c.type = ?
-                """,
+                    """,
                     (flow_type,),
                 )
                 for sub_id, sub_name, parent_name in cursor.fetchall():
                     is_valid = parent_name in categories_map and sub_name in categories_map[parent_name]
                     if not is_valid:
+                        # La suppression met automatiquement sub_category_id à NULL dans raw_data
                         cursor.execute("DELETE FROM sub_categories WHERE id = ?", (sub_id,))
 
-                # 2. Insertion / Mise à jour
+                # 2. Nettoyage des catégories obsolètes (absentes du JSON)
+                cursor.execute("SELECT id, name FROM categories WHERE type = ?", (flow_type,))
+                for cat_id, cat_name in cursor.fetchall():
+                    if cat_name not in allowed_cats:
+                        # La suppression met automatiquement category_id à NULL dans raw_data
+                        # Et supprime en cascade les sous-catégories associées via ON DELETE CASCADE
+                        cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+
+                # 3. Synchronisation / Ajout des catégories et sous-catégories valides
                 for cat_name, sub_list in categories_map.items():
                     cat_id = self.__get_or_create_category_id(cat_name, flow_type, cursor)
 
