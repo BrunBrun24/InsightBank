@@ -1,3 +1,4 @@
+import unicodedata
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -77,14 +78,25 @@ class CategoriesSubCategories:
         scroll = ctk.CTkScrollableFrame(tab, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # On récupère les catégories et on les transforme en liste pour gérer par index
+        # On récupère les catégories et on les trie par ordre alphabétique (insensible à la casse et aux accents)
         categories_dict = self.temp_config["database"][section_key]["categories_subcategories"]
-        cat_names_list = list(categories_dict.keys())
+        cat_names_list = sorted(
+            categories_dict.keys(),
+            key=lambda x: "".join(
+                c for c in unicodedata.normalize("NFD", x.lower()) if unicodedata.category(c) != "Mn"
+            ),
+        )
 
         self.entry_widgets[section_key]["categories_subcategories"] = {}
 
         for cat_id, cat_name in enumerate(cat_names_list):
-            sub_cats = categories_dict[cat_name]
+            # Tri alphabétique des sous-catégories également (insensible à la casse et aux accents)
+            sub_cats = sorted(
+                categories_dict[cat_name],
+                key=lambda s: "".join(
+                    c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn"
+                ),
+            )
 
             # Frame principale de la ligne catégorie
             cat_row_frame = ctk.CTkFrame(scroll, fg_color=("gray95", "gray20"), corner_radius=10)
@@ -319,6 +331,7 @@ class CategoriesSubCategories:
         errors = []
 
         for section in ["incomes", "expenses"]:
+            section_categories = {}
             for name_widget, sub_widgets_list in self.entry_widgets[section]["categories_subcategories"].values():
                 name = name_widget.get().strip()
 
@@ -335,7 +348,24 @@ class CategoriesSubCategories:
                     )
                     continue
 
-                new_db_config[section][name] = subs
+                # Tri alphabétique des sous-catégories (sans distinction de casse ni d'accents)
+                section_categories[name] = sorted(
+                    subs,
+                    key=lambda s: "".join(
+                        c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn"
+                    ),
+                )
+
+            # Tri alphabétique des catégories par nom avant de sauvegarder (sans distinction de casse ni d'accents)
+            sorted_section_categories = dict(
+                sorted(
+                    section_categories.items(),
+                    key=lambda item: "".join(
+                        c for c in unicodedata.normalize("NFD", item[0].lower()) if unicodedata.category(c) != "Mn"
+                    ),
+                )
+            )
+            new_db_config[section] = sorted_section_categories
 
         # Vérification finale des erreurs
         if errors:
