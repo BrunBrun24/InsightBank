@@ -1,4 +1,5 @@
 import threading
+from tkinter import messagebox
 
 import customtkinter as ctk
 import pandas as pd
@@ -11,6 +12,7 @@ from dashboard.bank_accounts.operations.operations import Operations
 from dashboard.configuration.automatisation_cat_sub_cat.automatisation_cat_sub_cat import AutomatisationCatSubCat
 from dashboard.configuration.categories_sub_categories.categories_sub_categories import CategoriesSubCategories
 from dashboard.configuration.configuration import Configuration
+from dashboard.configuration.data_management.data_management import DataManagement
 from dashboard.configuration.portfolio_tickers.portfolio_tickers import PortfolioTickers
 from dashboard.heritage.heritage import Heritage
 from dashboard.home.home import Home
@@ -82,6 +84,7 @@ class Dashboard(ctk.CTk):
         self.__automatisation_cat_sub_cat = AutomatisationCatSubCat(self.__main_view, self)
         self.__portfolio_tickers = PortfolioTickers(self.__main_view, self)
         self.__heritage = Heritage(self.__main_view, self)
+        self.__data_management = DataManagement(self.__main_view, self)
 
         self.__setup_navigation_frame()
         self.show_home()
@@ -163,6 +166,37 @@ class Dashboard(ctk.CTk):
 
     def show_heritage(self) -> None:
         self.__heritage.display()
+
+    def show_data_management(self) -> None:
+        self.__data_management.display()
+
+    def update_all_bank_stock_bilan(self) -> None:
+        """Met à jour tous les bilans bancaires et boursiers séquentiellement dans un seul thread."""
+        loading_win = LoadingPopup(self, "Mise à jour des bilans en cours...")
+
+        def task():
+            try:
+                # Mise à jour des comptes
+                bank_data = self.__bank_db.get_all_bank_account_currencies()
+                for account in bank_data:
+                    self.__bank_operations_module.update_bilan(account["id"], account["name"])
+
+                # Mise à jour des portefeuilles
+                stock_data = self.__stock_db.get_all_portfolios()
+                for _, account in stock_data.iterrows():
+                    self.__stock_operations_module.update_bilan(account["id"], account["name"])
+
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Erreur lors de la mise à jour des bilans : {e}")
+            finally:
+                self.after(0, lambda: self.__on_update_all_bilan_complete(loading_win))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def __on_update_all_bilan_complete(self, loading_win) -> None:
+        if loading_win and loading_win.winfo_exists():
+            loading_win.close()
+        self.show_home()
 
     def update_bank_bilan(self, bank_account_id: int, bank_account_name: str, callback=None) -> None:
         loading_win = LoadingPopup(self, "Génération des bilans...")

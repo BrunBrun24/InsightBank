@@ -120,6 +120,21 @@ class Configuration:
             height=CARD_H,
         )
 
+        self.__create_module_card(
+            inner_container,
+            1,
+            2,
+            "Import / Export",
+            "Sauvegardez l'ensemble de vos données financières ou restaurez-les "
+            "facilement à partir d'un fichier de sauvegarde externe. "
+            "Garantissez la portabilité et la sécurité de vos informations personnelles.",
+            "src/static/img/icons/file.png",
+            "Ouvrir",
+            command=self.__controller.show_data_management,
+            width=CARD_W,
+            height=CARD_H,
+        )
+
     def __create_module_card(
         self,
         parent,
