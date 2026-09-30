@@ -8,7 +8,7 @@
 
 | Configuration | Informations |
 | :---: | :---: |
-| ![Configuration](https://github.com/user-attachments/assets/f3544fd0-1957-4285-9b4d-e2166d5b5219) | ![Informations](https://github.com/user-attachments/assets/48daf418-0b16-4ab6-bd29-8497f86e246c) |
+| ![Configuration](https://github.com/user-attachments/assets/c5e40954-45dd-4918-93d6-d6fbf8ee9f42) | ![Informations](https://github.com/user-attachments/assets/48daf418-0b16-4ab6-bd29-8497f86e246c) |
 
 ---
 
